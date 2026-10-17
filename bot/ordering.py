@@ -21,8 +21,9 @@ def _money(value: Decimal, currency: str) -> str:
 
 
 def menu_for(restaurant) -> list[dict]:
+    """Full menu, sold-out items included (flagged), for the assistant's system prompt."""
     items = (
-        MenuItem.objects.filter(restaurant=restaurant, is_available=True)
+        MenuItem.objects.filter(restaurant=restaurant)
         .select_related("category")
         .order_by("category__position", "position", "id")
     )
@@ -33,6 +34,7 @@ def menu_for(restaurant) -> list[dict]:
             "category": i.category.name if i.category else "Other",
             "price": str(i.price),
             "description": i.description,
+            "available": i.is_available,
         }
         for i in items
     ]

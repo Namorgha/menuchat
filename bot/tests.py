@@ -10,7 +10,7 @@ from django.test import TestCase, override_settings
 from restaurants.models import Customer, MenuItem, Order, Restaurant
 
 from . import ordering
-from .engine import handle_message
+from .engine import TOOLS, OpenAIChatModel, handle_message, retry_delay
 from .models import Conversation, ProcessedMessage
 
 
@@ -145,6 +145,46 @@ class EngineTests(TestCase):
         self.assertIn("error", json.loads(model.calls[1][-1]["content"]))
         self.assertFalse(Order.objects.exists())
 
+    def test_menu_is_in_the_system_prompt_and_show_menu_is_gone(self):
+        self.juice.is_available = False
+        self.juice.save()
+        model = FakeModel({"content": "Salam!", "tool_calls": []})
+        handle_message(self.r, "212644444444", "Nora", "menu?", model)
+        prompt = model.calls[0][0]["content"]
+        self.assertIn(f"id {self.tagine.id}: Tagine", prompt)
+        self.assertIn("65.00 MAD", prompt)
+        self.assertIn(f"id {self.juice.id}: Orange juice", prompt)
+        self.assertIn("SOLD OUT", prompt)
+        self.assertNotIn("show_menu", [t["function"]["name"] for t in TOOLS])
+
+    def test_saved_cart_is_in_the_prompt_on_the_next_message(self):
+        # History keeps only text, so without this the model re-adds items when the customer says "yes".
+        handle_message(self.r, "212677777777", "Sami", "2 tagines", FakeModel(
+            {"content": None, "tool_calls": [tool("add_to_cart", item_id=self.tagine.id, quantity=2)]},
+            {"content": "Added. Confirm?", "tool_calls": []},
+        ))
+        model = FakeModel({"content": "Delivery or pickup?", "tool_calls": []})
+        handle_message(self.r, "212677777777", "Sami", "yes", model)
+        prompt = model.calls[0][0]["content"]
+        self.assertIn('"quantity": 2', prompt)
+        self.assertIn('"subtotal": "130.00 MAD"', prompt)
+
+    def test_several_tool_calls_in_one_response_take_one_round(self):
+        model = FakeModel(
+            {"content": None, "tool_calls": [
+                dict(tool("add_to_cart", item_id=self.tagine.id, quantity=2), id="c1"),
+                dict(tool("add_to_cart", item_id=self.juice.id, quantity=1), id="c2"),
+                dict(tool("set_fulfillment", method="pickup"), id="c3"),
+            ]},
+            {"content": "2 tagines + 1 juice, pickup. Total 148.00 MAD. Confirm?", "tool_calls": []},
+        )
+        handle_message(self.r, "212655555555", "Ali", "2 tagine + 1 juice, pickup", model)
+        self.assertEqual(len(model.calls), 2)
+        tool_msgs = [m for m in model.calls[1] if m["role"] == "tool"]
+        self.assertEqual([m["tool_call_id"] for m in tool_msgs], ["c1", "c2", "c3"])
+        convo = Conversation.objects.get()
+        self.assertEqual(ordering.cart_summary(convo)["total"], "148.00 MAD")
+
     def test_model_failure_gives_a_friendly_reply(self):
         class Broken:
             def complete(self, *a):
@@ -153,6 +193,51 @@ class EngineTests(TestCase):
         with self.assertLogs("bot.engine", level="ERROR"):
             reply = handle_message(self.r, "212633333333", "Omar", "salam", Broken())
         self.assertIn("trouble", reply)
+
+
+class RateLimited(Exception):
+    """Shaped like an openai.RateLimitError from Gemini: no Retry-After header, delay in the body."""
+
+    status_code = 429
+
+    def __init__(self, seconds):
+        super().__init__(f"Quota exceeded. Please retry in {seconds}s.")
+        self.response = mock.Mock(headers={})
+
+
+@override_settings(OPENAI_API_KEY="test-key")
+class RateLimitRetryTests(TestCase):
+    def setUp(self):
+        self.model = OpenAIChatModel()
+        self.ok = mock.Mock(choices=[mock.Mock(message=mock.Mock(content="Salam!", tool_calls=None))])
+
+    def test_retries_once_after_the_suggested_delay(self):
+        with mock.patch.object(self.model, "_create", side_effect=[RateLimited(3.5), self.ok]) as create, \
+                mock.patch("bot.engine.time.sleep") as sleep:
+            result = self.model.complete([], TOOLS)
+        self.assertEqual(result["content"], "Salam!")
+        self.assertEqual(create.call_count, 2)
+        sleep.assert_called_once_with(3.5)
+
+    def test_wait_is_capped_and_a_second_429_gives_the_friendly_reply(self):
+        r, _, _ = make_restaurant()
+        with mock.patch.object(self.model, "_create", side_effect=[RateLimited(35.1), RateLimited(25)]) as create, \
+                mock.patch("bot.engine.time.sleep") as sleep, self.assertLogs("bot.engine", level="ERROR"):
+            reply = handle_message(r, "212666666666", "Hind", "salam", self.model)
+        self.assertIn("trouble", reply)
+        self.assertEqual(create.call_count, 2)
+        sleep.assert_called_once_with(10)
+
+    def test_other_errors_are_not_retried(self):
+        with mock.patch.object(self.model, "_create", side_effect=TimeoutError()) as create, \
+                self.assertRaises(TimeoutError):
+            self.model.complete([], TOOLS)
+        self.assertEqual(create.call_count, 1)
+
+    def test_retry_after_header_is_preferred(self):
+        error = RateLimited(30)
+        error.response.headers = {"retry-after": "2"}
+        self.assertEqual(retry_delay(error), 2)
 
 
 @override_settings(WHATSAPP_APP_SECRET="app-secret", WHATSAPP_VERIFY_TOKEN="verify-me", WHATSAPP_ACCESS_TOKEN="tok")

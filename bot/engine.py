@@ -1,6 +1,8 @@
 """The conversational engine: turns a customer message into a reply, letting the model call ordering tools."""
 import json
 import logging
+import re
+import time
 from typing import Protocol
 
 from django.conf import settings
@@ -12,16 +14,9 @@ from .models import Conversation
 
 log = logging.getLogger(__name__)
 MAX_TOOL_ROUNDS = 6
+MAX_RETRY_WAIT = 10  # seconds; on HTTP 429 we retry once, waiting at most this long
 
 TOOLS = [
-    {
-        "type": "function",
-        "function": {
-            "name": "show_menu",
-            "description": "Get the current menu with item ids and prices. Call this before quoting any item or price.",
-            "parameters": {"type": "object", "properties": {}},
-        },
-    },
     {
         "type": "function",
         "function": {
@@ -98,18 +93,38 @@ TOOLS = [
 ]
 
 
-def system_prompt(restaurant: Restaurant, customer: Customer) -> str:
+def menu_text(restaurant: Restaurant) -> str:
+    lines = []
+    for item in ordering.menu_for(restaurant):
+        line = f"- id {item['id']}: {item['name']} ({item['category']}) — {item['price']} {restaurant.currency}"
+        if item["description"]:
+            line += f" — {item['description']}"
+        if not item["available"]:
+            line += " — SOLD OUT"
+        lines.append(line)
+    return "\n".join(lines) or "(the menu is empty)"
+
+
+def system_prompt(restaurant: Restaurant, customer: Customer, convo: Conversation) -> str:
     services = [s for s, ok in (("delivery", restaurant.accepts_delivery), ("pickup", restaurant.accepts_pickup)) if ok]
     return f"""You are the WhatsApp ordering assistant for {restaurant.name}. {restaurant.description}
 Customer name: {customer.name or "unknown"}.
 Opening hours: {restaurant.opening_hours or "not specified"}. Currently {"OPEN" if restaurant.is_open else "CLOSED — do not take orders"}.
 Services: {", ".join(services)}. Delivery fee: {restaurant.delivery_fee} {restaurant.currency}. Minimum order: {restaurant.minimum_order} {restaurant.currency}.
 
+Current menu (use these ids with the tools; SOLD OUT items cannot be ordered):
+{menu_text(restaurant)}
+
+Customer's saved cart right now (server-calculated; items here are already added — don't add them again):
+{json.dumps(ordering.cart_summary(convo), default=str)}
+
 How to work:
 - Reply in the customer's language: Moroccan Darija (Latin or Arabic script, match theirs), Arabic, French or English.
 - Keep replies short — this is WhatsApp. Use simple lists for menus and carts.
-- Never invent items or prices. Use show_menu for the menu and view_cart for totals; only quote numbers the tools return.
+- Never invent items or prices. Only quote prices from the menu above and totals the tools return.
 - Build the order with add_to_cart / remove_from_cart. If an item is ambiguous, ask which one.
+- Make all the tool calls you need in a single response: e.g. one add_to_cart per item plus set_fulfillment together.
+- When the customer confirms a cart that is already saved, just call place_order.
 - Before placing an order: show the cart and total, confirm delivery (with address) or pickup, and get a clear "yes".
 - After place_order succeeds, give the order number and total, and say they'll get updates here.
 - If a tool returns an error, explain it simply and help fix it.
@@ -126,12 +141,26 @@ class OpenAIChatModel:
 
         if not settings.OPENAI_API_KEY:
             raise RuntimeError("OPENAI_API_KEY is not set")
-        self.client = OpenAI(api_key=settings.OPENAI_API_KEY, base_url=settings.OPENAI_BASE_URL, timeout=30)
+        # max_retries=0: the SDK would otherwise retry 429s itself, spending more of a small quota.
+        self.client = OpenAI(
+            api_key=settings.OPENAI_API_KEY, base_url=settings.OPENAI_BASE_URL, timeout=30, max_retries=0
+        )
 
-    def complete(self, messages, tools):
-        resp = self.client.chat.completions.create(
+    def _create(self, messages, tools):
+        return self.client.chat.completions.create(
             model=settings.OPENAI_MODEL, messages=messages, tools=tools, temperature=0.3, max_tokens=600
         )
+
+    def complete(self, messages, tools):
+        try:
+            resp = self._create(messages, tools)
+        except Exception as e:
+            if getattr(e, "status_code", None) != 429:
+                raise
+            wait = retry_delay(e)
+            log.warning("Rate limited by the AI provider; retrying once in %.1fs", wait)
+            time.sleep(wait)
+            resp = self._create(messages, tools)
         msg = resp.choices[0].message
         return {
             "content": msg.content,
@@ -148,14 +177,26 @@ class OpenAIChatModel:
         }
 
 
+def retry_delay(error) -> float:
+    """Seconds to wait after a 429: the provider's suggestion, capped at MAX_RETRY_WAIT."""
+    response = getattr(error, "response", None)
+    suggested = None
+    try:
+        suggested = float(response.headers.get("retry-after"))
+    except (AttributeError, TypeError, ValueError):
+        # Gemini sends no Retry-After header; it says "Please retry in 35.1s" / retryDelay "35s" in the body.
+        match = re.search(r"retry in ([\d.]+)s|retryDelay\W+([\d.]+)s", str(getattr(error, "body", "")) + str(error))
+        if match:
+            suggested = float(match.group(1) or match.group(2))
+    return min(suggested if suggested is not None else MAX_RETRY_WAIT, MAX_RETRY_WAIT)
+
+
 def _run_tool(convo: Conversation, name: str, raw_args: str):
     try:
         args = json.loads(raw_args or "{}")
     except json.JSONDecodeError:
         return {"error": "Invalid arguments."}, None
     try:
-        if name == "show_menu":
-            return {"menu": ordering.menu_for(convo.customer.restaurant)}, None
         if name == "add_to_cart":
             return ordering.add_to_cart(convo, args.get("item_id"), args.get("quantity", 1), args.get("note", "")), None
         if name == "remove_from_cart":
@@ -187,7 +228,7 @@ def handle_message(restaurant: Restaurant, external_id: str, name: str, text: st
     convo.save(update_fields=["history", "updated_at"])
 
     model = model or OpenAIChatModel()
-    messages = [{"role": "system", "content": system_prompt(restaurant, customer)}] + [
+    messages = [{"role": "system", "content": system_prompt(restaurant, customer, convo)}] + [
         {"role": m["role"], "content": m["content"]} for m in convo.history
     ]
 

@@ -20,7 +20,7 @@ Let restaurant customers order food on WhatsApp. An AI assistant answers in **Da
 | Layer | Tech |
 |---|---|
 | Backend | Django 5, PostgreSQL |
-| AI | OpenAI Chat Completions with tool calling (`gpt-4o-mini` by default) |
+| AI | Any OpenAI-compatible Chat Completions API with tool calling (Gemini `gemini-3.5-flash-lite` by default, or OpenAI `gpt-4o-mini`) |
 | Messaging | WhatsApp Business Cloud API (webhook + Graph API) |
 | Frontend | Django templates, vanilla JS, CSS (no build step) |
 | Deploy | Docker, Gunicorn, WhiteNoise |
@@ -54,7 +54,7 @@ dashboard/     landing + demo chat · staff order board
 ```bash
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env              # add your OPENAI_API_KEY
+cp .env.example .env              # add your OPENAI_API_KEY (a free Gemini key works)
 python manage.py migrate
 python manage.py seed_demo --staff-username demo --staff-password <choose-one>
 python manage.py runserver
