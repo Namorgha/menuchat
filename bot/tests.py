@@ -2,9 +2,11 @@ import hashlib
 import hmac
 import json
 from decimal import Decimal
+from io import StringIO
 from unittest import mock
 
 from django.contrib.auth import get_user_model
+from django.core.management import CommandError, call_command
 from django.test import TestCase, override_settings
 
 from restaurants.models import Customer, MenuItem, Order, Restaurant
@@ -326,6 +328,42 @@ class DashboardTests(TestCase):
 
     def test_board_requires_login(self):
         self.assertEqual(self.client.get("/dashboard/").status_code, 302)
+
+    def test_superuser_sees_every_restaurant_without_being_staff(self):
+        admin = get_user_model().objects.create_superuser("admin", "admin@example.com", "pw-123456")
+        self.client.force_login(admin)
+        page = self.client.get(f"/dashboard/{self.r.slug}/")
+        self.assertEqual(page.status_code, 200)
+        self.assertEqual(page.context["restaurant"], self.r)
+        self.assertEqual(self.client.get(f"/dashboard/{self.r.slug}/data/").status_code, 200)
+        with mock.patch("whatsapp.client.send_text"):
+            self.assertEqual(self.set_status("confirmed").status_code, 200)
+
+
+class DeploySetupTests(TestCase):
+    """The Docker CMD runs seed_demo and createsuperuser --noinput on every start."""
+
+    def test_seed_demo_is_idempotent_and_keeps_admin_edits(self):
+        call_command("seed_demo", stdout=StringIO())
+        r = Restaurant.objects.get(slug="dar-tangier")
+        r.delivery_fee = Decimal("15")
+        r.save()
+        call_command("seed_demo", stdout=StringIO())
+        self.assertEqual(Restaurant.objects.count(), 1)
+        self.assertEqual(Restaurant.objects.get().delivery_fee, Decimal("15"))
+        self.assertEqual(MenuItem.objects.filter(restaurant=r).count(), 15)
+
+    @mock.patch.dict("os.environ", {
+        "DJANGO_SUPERUSER_USERNAME": "boss", "DJANGO_SUPERUSER_EMAIL": "boss@example.com",
+        "DJANGO_SUPERUSER_PASSWORD": "a-long-deploy-password",
+    })
+    def test_createsuperuser_from_env_then_fails_cleanly_when_it_exists(self):
+        call_command("createsuperuser", interactive=False, stdout=StringIO())
+        user = get_user_model().objects.get(username="boss")
+        self.assertTrue(user.is_superuser and user.check_password("a-long-deploy-password"))
+        # second start: a CommandError, which `|| true` in the Dockerfile swallows
+        with self.assertRaises(CommandError):
+            call_command("createsuperuser", interactive=False, stdout=StringIO(), stderr=StringIO())
 
 
 class DemoChatTests(TestCase):

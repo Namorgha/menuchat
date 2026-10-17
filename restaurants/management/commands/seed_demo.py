@@ -43,7 +43,8 @@ class Command(BaseCommand):
         parser.add_argument("--staff-password")
 
     def handle(self, *args, **opts):
-        r, created = Restaurant.objects.update_or_create(
+        # get_or_create, not update_or_create: this runs on every deploy and must keep admin edits.
+        r, created = Restaurant.objects.get_or_create(
             slug=settings.DEMO_RESTAURANT_SLUG,
             defaults=dict(
                 name="Dar Tangier",

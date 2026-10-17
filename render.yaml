@@ -24,6 +24,12 @@ services:
         value: "https://generativelanguage.googleapis.com/v1beta/openai/"
       - key: OPENAI_MODEL
         value: "gemini-3.5-flash-lite"
+      - key: DJANGO_SUPERUSER_USERNAME
+        sync: false
+      - key: DJANGO_SUPERUSER_EMAIL
+        sync: false
+      - key: DJANGO_SUPERUSER_PASSWORD
+        sync: false
       - key: WHATSAPP_VERIFY_TOKEN
         generateValue: true
       - key: WHATSAPP_APP_SECRET
