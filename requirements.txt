@@ -1,4 +1,4 @@
-Django==5.1.13
+Django==5.2.18
 openai>=1.40,<4
 requests>=2.32
 python-dotenv>=1.0

@@ -126,7 +126,7 @@ class OpenAIChatModel:
 
         if not settings.OPENAI_API_KEY:
             raise RuntimeError("OPENAI_API_KEY is not set")
-        self.client = OpenAI(api_key=settings.OPENAI_API_KEY, timeout=30)
+        self.client = OpenAI(api_key=settings.OPENAI_API_KEY, base_url=settings.OPENAI_BASE_URL, timeout=30)
 
     def complete(self, messages, tools):
         resp = self.client.chat.completions.create(
@@ -136,7 +136,13 @@ class OpenAIChatModel:
         return {
             "content": msg.content,
             "tool_calls": [
-                {"id": tc.id, "name": tc.function.name, "arguments": tc.function.arguments}
+                {
+                    "id": tc.id,
+                    "name": tc.function.name,
+                    "arguments": tc.function.arguments,
+                    # Gemini puts a thought_signature here and requires it to be sent back.
+                    "extra_content": (tc.model_extra or {}).get("extra_content"),
+                }
                 for tc in (msg.tool_calls or [])
             ],
         }
@@ -199,6 +205,7 @@ def handle_message(restaurant: Restaurant, external_id: str, name: str, text: st
                     "content": result.get("content"),
                     "tool_calls": [
                         {"id": c["id"], "type": "function", "function": {"name": c["name"], "arguments": c["arguments"]}}
+                        | ({"extra_content": c["extra_content"]} if c.get("extra_content") else {})
                         for c in calls
                     ],
                 }
