@@ -69,7 +69,7 @@ Or with Docker and Postgres: `docker compose up --build`.
 ## Deploy (Render)
 
 1. Render → **New → Blueprint** → select this repo (uses `render.yaml`: web service + Postgres).
-2. Fill in `OPENAI_API_KEY` when asked; the secret key and verify token are generated for you.
+2. Fill in `OPENAI_API_KEY` with your Gemini API key when asked (the blueprint sets the Gemini endpoint and model); the secret key and verify token are generated for you.
 3. After the first deploy, open the service **Shell** and run:
    ```bash
    python manage.py seed_demo --staff-username demo --staff-password <choose-one>
