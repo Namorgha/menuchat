@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% block title %}MenuChat — take food orders on WhatsApp{% endblock %}
+{% block content %}
+<section class="hero">
+  <div>
+    <span class="eyebrow">AI ordering for restaurants</span>
+    <h1>Your customers already message you on WhatsApp. Let them order there.</h1>
+    <p class="lead">MenuChat answers in Darija, French, Arabic or English, builds the order from your real menu, and sends it straight to your kitchen dashboard.</p>
+    <ul class="points">
+      <li><span class="dot">1</span><span><b>No app to download.</b> Customers order in the chat they already use.</span></li>
+      <li><span class="dot">2</span><span><b>Never wrong on price.</b> The AI only talks — totals are calculated by the server from your menu.</span></li>
+      <li><span class="dot">3</span><span><b>Live order board.</b> Confirm, prepare, send out — the customer gets a WhatsApp update at every step.</span></li>
+    </ul>
+    <div class="cta-row">
+      <a class="btn btn-primary" href="#try">Try the demo →</a>
+      <a class="btn" href="https://github.com/Namorgha/menuchat" target="_blank" rel="noopener">View the code</a>
+    </div>
+  </div>
+
+  <div id="try">
+    {% if restaurant %}
+    <div class="phone" aria-label="Demo chat">
+      <div class="phone-head">
+        <div class="avatar">{{ restaurant.name|slice:":1" }}</div>
+        <div class="meta"><b>{{ restaurant.name }}</b><small>{% if restaurant.is_open %}Open · replies instantly{% else %}Closed right now{% endif %}</small></div>
+        <button type="button" id="reset" title="Start a new conversation">New chat</button>
+      </div>
+      <div class="chat" id="chat" aria-live="polite"></div>
+      <div class="suggestions" id="suggestions">
+        <button type="button">Salam, chno kayn f menu?</button>
+        <button type="button">2 tagine poulet w 1 jus d'orange</button>
+        <button type="button">Je voudrais une pizza pour emporter</button>
+        <button type="button">Where is my order?</button>
+      </div>
+      <form class="composer" id="composer" autocomplete="off">
+        <input id="text" name="text" placeholder="Type a message…" maxlength="500" aria-label="Message">
+        <button type="submit" aria-label="Send">➤</button>
+      </form>
+      <div class="chat-note">Demo restaurant · no real orders or payments</div>
+    </div>
+    {% else %}
+    <div class="phone"><div class="chat"><div class="bubble in">Demo isn't set up yet. Run <code>python manage.py seed_demo</code>.</div></div></div>
+    {% endif %}
+  </div>
+</section>
+
+<section class="how">
+  <h2>How it works</h2>
+  <div class="steps">
+    <div class="step"><b>1 · Add your menu</b><span>Categories, items, prices, delivery fee and hours. Mark items sold out in one click.</span></div>
+    <div class="step"><b>2 · Connect your WhatsApp number</b><span>Uses the official WhatsApp Business Cloud API. One server can run many restaurants.</span></div>
+    <div class="step"><b>3 · Orders land on your board</b><span>Move them through Confirmed → Preparing → On the way. Customers are notified automatically.</span></div>
+  </div>
+</section>
+<footer class="foot">Built with Django, PostgreSQL, OpenAI tool calling and the WhatsApp Cloud API.</footer>
+{% endblock %}
+
+{% block scripts %}
+{% if restaurant %}
+<script>
+(() => {
+  const chat = document.getElementById("chat");
+  const form = document.getElementById("composer");
+  const input = document.getElementById("text");
+  const csrf = document.cookie.split("; ").find(c => c.startsWith("csrftoken="))?.split("=")[1] || "";
+  let busy = false, lastCount = -1;
+
+  const bubble = (role, text, extra = "") => {
+    const el = document.createElement("div");
+    el.className = `bubble ${role === "user" ? "out" : "in"} ${extra}`;
+    el.textContent = text;
+    chat.appendChild(el);
+    chat.scrollTop = chat.scrollHeight;
+    return el;
+  };
+  const render = (messages) => {
+    chat.innerHTML = "";
+    if (!messages.length) bubble("assistant", "Salam! 👋 Welcome to {{ restaurant.name|escapejs }}. What would you like to order today?");
+    messages.forEach(m => bubble(m.role, m.content));
+    lastCount = messages.length;
+  };
+  const load = async () => {
+    const r = await fetch("/demo/messages/", { credentials: "same-origin" });
+    if (r.ok) { const d = await r.json(); if (!busy && d.messages.length !== lastCount) render(d.messages); }
+  };
+  const post = (url, body) => fetch(url, { method: "POST", credentials: "same-origin", headers: { "X-CSRFToken": csrf }, body });
+
+  const send = async (text) => {
+    if (busy || !text.trim()) return;
+    busy = true; input.value = "";
+    if (lastCount === 0) chat.innerHTML = "";
+    bubble("user", text);
+    const typing = bubble("assistant", "typing…", "typing");
+    try {
+      const r = await post("/demo/send/", new URLSearchParams({ text }));
+      const d = await r.json();
+      typing.remove();
+      bubble("assistant", d.reply || d.error || "Something went wrong.");
+      lastCount += 2;
+    } catch { typing.remove(); bubble("assistant", "Network error — please try again."); }
+    busy = false; input.focus();
+  };
+
+  form.addEventListener("submit", e => { e.preventDefault(); send(input.value); });
+  document.getElementById("suggestions").addEventListener("click", e => { if (e.target.tagName === "BUTTON") send(e.target.textContent); });
+  document.getElementById("reset").addEventListener("click", async () => { await post("/demo/reset/"); lastCount = -1; load(); });
+  load();
+  setInterval(load, 4000); // picks up order status updates from the kitchen
+})();
+</script>
+{% endif %}
+{% endblock %}

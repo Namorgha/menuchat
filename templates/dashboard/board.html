@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}Orders · {{ restaurant.name }}{% endblock %}
+{% block nav %}
+<div style="display:flex;gap:8px;align-items:center">
+  {% if restaurants|length > 1 %}
+  <select onchange="location.href='/dashboard/'+this.value+'/'" class="btn btn-sm" aria-label="Restaurant">
+    {% for r in restaurants %}<option value="{{ r.slug }}" {% if r.pk == restaurant.pk %}selected{% endif %}>{{ r.name }}</option>{% endfor %}
+  </select>
+  {% endif %}
+  <a class="btn btn-sm" href="/admin/restaurants/menuitem/?restaurant__id__exact={{ restaurant.pk }}">Menu</a>
+  <form method="post" action="/admin/logout/" style="margin:0">{% csrf_token %}<button class="btn btn-sm">Log out</button></form>
+</div>
+{% endblock %}
+{% block content %}
+<div class="dash-head">
+  <div>
+    <h1>{{ restaurant.name }}</h1>
+    <span id="open-pill" class="status-pill {% if restaurant.is_open %}open{% else %}closed{% endif %}">{% if restaurant.is_open %}● Taking orders{% else %}● Closed{% endif %}</span>
+  </div>
+  <button class="btn" id="toggle-open">{% if restaurant.is_open %}Pause orders{% else %}Open for orders{% endif %}</button>
+</div>
+<div class="board" id="board"></div>
+{% csrf_token %}
+{% endblock %}
+{% block scripts %}
+<script>
+(() => {
+  const slug = "{{ restaurant.slug|escapejs }}";
+  const csrf = document.querySelector("[name=csrfmiddlewaretoken]").value;
+  const board = document.getElementById("board");
+  const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  let known = null;
+
+  const card = o => `
+    <div class="card ${o.status === "new" ? "new" : ""}">
+      <div class="card-top"><b>#${o.number}</b><small>${esc(o.created)} · <span class="tag">${esc(o.status_label)}</span></small></div>
+      <div class="who">${esc(o.customer)} · ${o.channel === "whatsapp" ? "WhatsApp" : "Web demo"} · ${esc(o.fulfillment)}</div>
+      <ul>${o.items.map(i => `<li>${i.q}× ${esc(i.name)}${i.note ? ` <span class="note">(${esc(i.note)})</span>` : ""}</li>`).join("")}</ul>
+      ${o.address ? `<div class="addr">📍 ${esc(o.address)}</div>` : ""}
+      ${o.notes ? `<div class="note">📝 ${esc(o.notes)}</div>` : ""}
+      <div class="row"><span>Total</span><span>${esc(o.total)}</span></div>
+      ${o.actions.length ? `<div class="actions">${o.actions.map(a =>
+        `<button class="btn btn-sm ${a.status === "cancelled" ? "" : "btn-primary"}" data-order="${o.id}" data-status="${a.status}">${esc(a.label)}</button>`).join("")}</div>` : ""}
+    </div>`;
+
+  const load = async () => {
+    const r = await fetch(`/dashboard/${slug}/data/`, { credentials: "same-origin" });
+    if (!r.ok) return;
+    const d = await r.json();
+    const ids = d.columns[0].orders.map(o => o.id);
+    if (known && ids.some(id => !known.includes(id))) { document.title = "🔔 New order · {{ restaurant.name|escapejs }}"; }
+    known = ids;
+    board.innerHTML = d.columns.map(c => `
+      <section class="col"><h2><span>${esc(c.title)}</span><span>${c.orders.length}</span></h2>
+        ${c.orders.length ? c.orders.map(card).join("") : `<div class="empty">No orders</div>`}
+      </section>`).join("");
+  };
+
+  board.addEventListener("click", async e => {
+    const b = e.target.closest("button[data-order]");
+    if (!b) return;
+    if (b.dataset.status === "cancelled" && !confirm("Cancel this order? The customer will be told.")) return;
+    b.disabled = true;
+    await fetch(`/dashboard/${slug}/orders/${b.dataset.order}/status/`, {
+      method: "POST", credentials: "same-origin", headers: { "X-CSRFToken": csrf }, body: new URLSearchParams({ status: b.dataset.status }),
+    });
+    document.title = "Orders · {{ restaurant.name|escapejs }}";
+    load();
+  });
+
+  document.getElementById("toggle-open").addEventListener("click", async e => {
+    const r = await fetch(`/dashboard/${slug}/toggle-open/`, { method: "POST", credentials: "same-origin", headers: { "X-CSRFToken": csrf } });
+    const d = await r.json();
+    const pill = document.getElementById("open-pill");
+    pill.className = `status-pill ${d.is_open ? "open" : "closed"}`;
+    pill.textContent = d.is_open ? "● Taking orders" : "● Closed";
+    e.target.textContent = d.is_open ? "Pause orders" : "Open for orders";
+  });
+
+  load();
+  setInterval(load, 5000);
+})();
+</script>
+{% endblock %}
