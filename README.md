@@ -11,7 +11,7 @@ Let restaurant customers order food on WhatsApp. An AI assistant answers in **Da
 - **Server-side pricing** — the AI never produces prices or totals; every number comes from the database
 - **Order rules enforced in code** — opening state, minimum order, delivery address, sold-out items
 - **Restaurant portal** — a mobile-first back office for restaurant staff (Django admin stays for the platform owner):
-  - **Orders** — live board (Incoming → In the kitchen → On the way → Done) with one-tap status changes and a chime + flashing tab for new orders, plus a paginated history with status filter and search by order number or customer
+  - **Orders** — live board of kitchen tickets (Incoming → In the kitchen → On the way → Done) with one-tap status changes, and a chime + flashing tab for new orders, plus a paginated history with status filter and search by order number or customer
   - **Inbox** — every conversation with the full chat; **Take over** pauses the bot for that customer so staff can reply from the portal (sent on WhatsApp), **Hand back to bot** resumes it
   - **Menu** — add, edit, delete and reorder categories and items, prices, descriptions and photos; a sold-out switch that applies instantly
   - **Settings** — name, description, opening hours, currency, delivery fee, minimum order, delivery/pickup, new-order alert number, and **delivery zones** (neighbourhoods with their own fee)

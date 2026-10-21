@@ -1,58 +1,89 @@
 {% extends "base.html" %}
-{% block title %}MenuChat — take food orders on WhatsApp{% endblock %}
-{% block content %}
-<section class="hero">
-  <div>
-    <span class="eyebrow">AI ordering for restaurants</span>
-    <h1>Your customers already message you on WhatsApp. Let them order there.</h1>
-    <p class="lead">MenuChat answers in Darija, French, Arabic or English, builds the order from your real menu, and sends it straight to your kitchen dashboard.</p>
-    <ul class="points">
-      <li><span class="dot">1</span><span><b>No app to download.</b> Customers order in the chat they already use.</span></li>
-      <li><span class="dot">2</span><span><b>Never wrong on price.</b> The AI only talks — totals are calculated by the server from your menu.</span></li>
-      <li><span class="dot">3</span><span><b>Live order board.</b> Confirm, prepare, send out — the customer gets a WhatsApp update at every step.</span></li>
-    </ul>
-    <div class="cta-row">
-      <a class="btn btn-primary" href="#try">Try the demo →</a>
-      <a class="btn" href="https://github.com/Namorgha/menuchat" target="_blank" rel="noopener">View the code</a>
+{% block title %}MenuChat · WhatsApp ordering for restaurants{% endblock %}
+{% block body %}
+<header class="on-tea hero">
+  <div class="wrap">
+    <div class="site-top">
+      <a class="logo" href="{% url 'landing' %}">{% include "_logo.html" %}MenuChat</a>
+      <a class="signin" href="{% url 'login' %}">Sign in</a>
+    </div>
+    <div class="hero-grid">
+      <div>
+        <h1>Every WhatsApp order answered, even in the Friday rush.</h1>
+        <p class="lead">MenuChat greets your customers in Darija, Arabic, French or English, takes their order from your menu and sends it to your kitchen. You stay at the stove.</p>
+        <div class="cta">
+          <a class="btn btn-brass" href="#try">Order from the demo</a>
+          <a class="btn btn-light" href="{% url 'login' %}">Restaurant sign in</a>
+        </div>
+      </div>
+
+      <div class="arch" id="try">
+        {% if restaurant %}
+        <div class="arch-head">
+          <b>{{ restaurant.name }}</b>
+          <small>{% if restaurant.is_open %}Open, usually replies instantly{% else %}Closed right now{% endif %}</small><br>
+          <button type="button" id="reset">Start a new chat</button>
+        </div>
+        <div class="chat" id="chat" aria-live="polite" aria-label="Demo chat"></div>
+        <div class="suggestions" id="suggestions">
+          <button type="button">Salam, chno kayn f menu?</button>
+          <button type="button">2 tajine djaj w jus d'orange</button>
+          <button type="button">Une pizza à emporter svp</button>
+          <button type="button">Where is my order?</button>
+        </div>
+        <form class="composer" id="composer" autocomplete="off">
+          <input id="text" name="text" placeholder="Type a message" maxlength="500" aria-label="Message">
+          <button type="submit" aria-label="Send">➤</button>
+        </form>
+        <p class="chat-note">Demo restaurant. Orders go to the demo kitchen; nothing is delivered.</p>
+        {% else %}
+        <div class="arch-head"><b>Demo chat</b><small>Not set up yet. Run <code>python manage.py seed_demo</code>.</small></div>
+        {% endif %}
+      </div>
     </div>
   </div>
+</header>
 
-  <div id="try">
-    {% if restaurant %}
-    <div class="phone" aria-label="Demo chat">
-      <div class="phone-head">
-        <div class="avatar">{{ restaurant.name|slice:":1" }}</div>
-        <div class="meta"><b>{{ restaurant.name }}</b><small>{% if restaurant.is_open %}Open · replies instantly{% else %}Closed right now{% endif %}</small></div>
-        <button type="button" id="reset" title="Start a new conversation">New chat</button>
+<main>
+  <section class="story">
+    <div class="wrap story-grid">
+      <div class="side">
+        <h2 class="section-title">One order, start to finish</h2>
+        <p>What happens between a customer's first message and the knock on their door.</p>
       </div>
-      <div class="chat" id="chat" aria-live="polite"></div>
-      <div class="suggestions" id="suggestions">
-        <button type="button">Salam, chno kayn f menu?</button>
-        <button type="button">2 tagine poulet w 1 jus d'orange</button>
-        <button type="button">Je voudrais une pizza pour emporter</button>
-        <button type="button">Where is my order?</button>
-      </div>
-      <form class="composer" id="composer" autocomplete="off">
-        <input id="text" name="text" placeholder="Type a message…" maxlength="500" aria-label="Message">
-        <button type="submit" aria-label="Send">➤</button>
-      </form>
-      <div class="chat-note">Demo restaurant · no real orders or payments</div>
+      <ol class="timeline">
+        <li><time>20:14</time><h3>Youssef writes to your number</h3><p>He asks in Darija for two chicken tagines. There's nothing to install and nothing to sign up for.</p></li>
+        <li><time>20:14</time><h3>MenuChat takes the order</h3><p>It checks your menu and prices, asks for his neighbourhood, adds that delivery fee and confirms the total, cash on delivery.</p></li>
+        <li><time>20:15</time><h3>Your phone chimes</h3><p>The ticket lands on your orders board and in a WhatsApp alert. You tap Confirm.</p></li>
+        <li><time>20:42</time><h3>Youssef hears it's on the way</h3><p>Each step you mark sends him an update, so he doesn't need to call.</p></li>
+      </ol>
     </div>
-    {% else %}
-    <div class="phone"><div class="chat"><div class="bubble in">Demo isn't set up yet. Run <code>python manage.py seed_demo</code>.</div></div></div>
-    {% endif %}
-  </div>
-</section>
+  </section>
 
-<section class="how">
-  <h2>How it works</h2>
-  <div class="steps">
-    <div class="step"><b>1 · Add your menu</b><span>Categories, items, prices, delivery fee and hours. Mark items sold out in one click.</span></div>
-    <div class="step"><b>2 · Connect your WhatsApp number</b><span>Uses the official WhatsApp Business Cloud API. One server can run many restaurants.</span></div>
-    <div class="step"><b>3 · Orders land on your board</b><span>Move them through Confirmed → Preparing → On the way. Customers are notified automatically.</span></div>
+  <section class="owner">
+    <div class="wrap owner-grid">
+      <div class="intro">
+        <h2 class="section-title">You decide when the bot talks</h2>
+        <p>The owner app is built for one hand and a busy service.</p>
+        <a class="btn btn-primary" href="{% url 'login' %}">Open the owner app</a>
+      </div>
+      <dl>
+        <div class="row"><dt>Step in on any chat</dt><dd>Take over a conversation and reply yourself. The bot waits until you hand it back.</dd></div>
+        <div class="row"><dt>Reply from WhatsApp Business</dt><dd>Answer from your usual app and the bot steps back for thirty minutes.</dd></div>
+        <div class="row"><dt>Deliver where you choose</dt><dd>Set your neighbourhoods and their fees. Anywhere else, the bot offers pickup.</dd></div>
+        <div class="row"><dt>Sold out means sold out</dt><dd>Switch a dish off and the bot stops offering it on the next message.</dd></div>
+      </dl>
+    </div>
+  </section>
+</main>
+
+<footer class="foot">
+  <div class="wrap">
+    <a class="logo" href="{% url 'landing' %}">{% include "_logo.html" %}MenuChat</a>
+    <span>WhatsApp ordering for restaurants in Morocco.</span>
+    <nav aria-label="Footer"><a href="{% url 'login' %}">Sign in</a><a href="#try">Demo</a><a href="https://github.com/Namorgha/menuchat" target="_blank" rel="noopener">Code</a></nav>
   </div>
-</section>
-<footer class="foot">Built with Django, PostgreSQL, OpenAI tool calling and the WhatsApp Cloud API.</footer>
+</footer>
 {% endblock %}
 
 {% block scripts %}
@@ -97,7 +128,7 @@
       typing.remove();
       if (d.paused) { lastCount += 1; } // a person will answer; their reply arrives with the next refresh
       else { bubble("assistant", d.reply || d.error || "Something went wrong."); lastCount += 2; }
-    } catch { typing.remove(); bubble("assistant", "Network error — please try again."); }
+    } catch { typing.remove(); bubble("assistant", "Network error. Please try again."); }
     busy = false; input.focus();
   };
 

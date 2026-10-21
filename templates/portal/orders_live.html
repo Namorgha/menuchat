@@ -3,9 +3,10 @@
 {% block content %}
 {% include "portal/_orders_tabs.html" %}
 <div class="board-bar">
-  <p class="board-status muted" id="board-status" aria-live="polite">Loading orders…</p>
+  <span></span>
   <button type="button" class="btn btn-sm" id="sound-toggle" aria-pressed="false">🔕 Sound off</button>
 </div>
+<p class="board-status" id="board-status" aria-live="polite">Loading orders…</p>
 <div class="board" id="board"></div>
 {% endblock %}
 {% block scripts %}
@@ -67,18 +68,28 @@
   };
   ["click", "keydown"].forEach(type => document.addEventListener(type, () => flashing && stopFlash()));
 
-  const card = o => `
-    <div class="card ${o.status === "new" ? "new" : ""}">
-      <div class="card-top"><b>#${o.number}</b><small>${esc(o.created)} · <span class="tag">${esc(o.status_label)}</span></small></div>
-      <div class="who">${esc(o.customer)} · ${o.channel === "whatsapp" ? "WhatsApp" : "Web demo"} · ${esc(o.fulfillment)}</div>
-      <ul>${o.items.map(i => `<li>${i.q}× ${esc(i.name)}${i.note ? ` <span class="note">(${esc(i.note)})</span>` : ""}</li>`).join("")}</ul>
-      ${o.address ? `<div class="addr">📍 ${esc(o.address)}</div>` : ""}
-      ${o.notes ? `<div class="note">📝 ${esc(o.notes)}</div>` : ""}
-      <div class="row"><span>Total</span><span>${esc(o.total)}</span></div>
-      <div class="pay">💵 ${esc(o.payment)}</div>
-      ${o.actions.length ? `<div class="actions">${o.actions.map(a =>
-        `<button class="btn btn-sm ${a.status === "cancelled" ? "" : "btn-primary"}" data-order="${o.id}" data-status="${a.status}">${esc(a.label)}</button>`).join("")}</div>` : ""}
-    </div>`;
+  const ticket = o => {
+    const isNew = o.status === "new";
+    const done = o.status === "completed" || o.status === "cancelled";
+    return `
+    <article class="ticket ${isNew ? "is-new" : ""} ${done ? "done" : ""}" aria-label="Order ${o.number}">
+      <div class="t-top">
+        <div><div class="t-num">#${o.number}</div>${isNew ? `<span class="stamp">NEW</span>` : ""}</div>
+        <div class="t-time"><b>${esc(o.created)}</b>${esc(o.status_label)}</div>
+      </div>
+      <p class="who"><b>${esc(o.customer)}</b>, ${o.channel === "whatsapp" ? "WhatsApp" : "web demo"}, ${esc(o.fulfillment).toLowerCase()}</p>
+      <hr>
+      ${o.items.map(i => `<div class="line"><span>${i.q}× ${esc(i.name)}</span><span>${esc(i.price)}</span></div>${i.note ? `<div class="note">${esc(i.note)}</div>` : ""}`).join("")}
+      ${o.delivery ? `<div class="line"><span>${esc(o.delivery.label)}</span><span>${esc(o.delivery.fee)}</span></div>` : ""}
+      <hr>
+      <div class="line total"><span>Total</span><span>${esc(o.total)}</span></div>
+      <div class="pay">${esc(o.payment)}</div>
+      ${o.address ? `<div class="where">${esc(o.address)}</div>` : ""}
+      ${o.notes ? `<div class="where">Note: ${esc(o.notes)}</div>` : ""}
+      ${o.actions.length ? `<div class="acts">${o.actions.map(a =>
+        `<button class="btn ${a.status === "cancelled" ? "alt" : "btn-primary"}" data-order="${o.id}" data-status="${a.status}">${esc(a.label)}</button>`).join("")}</div>` : ""}
+    </article>`;
+  };
 
   const load = async () => {
     let d;
@@ -94,10 +105,11 @@
     const fresh = known ? ids.filter(id => !known.includes(id)).length : 0;
     if (fresh) { chime(); flash(ids.length); }
     known = ids;
-    status.textContent = `Updated ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} · refreshes every 5 seconds`;
+    status.textContent = `Updated ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}. Refreshes every 5 seconds.`;
     board.innerHTML = d.columns.map(c => `
       <section class="col"><h2><span>${esc(c.title)}</span><span>${c.orders.length}</span></h2>
-        ${c.orders.length ? c.orders.map(card).join("") : `<div class="empty">No orders</div>`}
+        <div class="rail" aria-hidden="true"></div>
+        <div class="tickets">${c.orders.length ? c.orders.map(ticket).join("") : `<p class="empty">No orders</p>`}</div>
       </section>`).join("");
   };
 

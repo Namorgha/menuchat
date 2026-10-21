@@ -1,23 +1,12 @@
-{% load static %}<!doctype html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  {% include "_head.html" %}
   <title>{% block title %}MenuChat{% endblock %}</title>
-  <meta name="description" content="Let customers order food on WhatsApp. An AI assistant takes the order in Darija, French, Arabic or English and sends it to your kitchen dashboard.">
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' rx='16' fill='%230f7b5c'/><text x='32' y='44' font-size='34' text-anchor='middle'>🍽</text></svg>">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="{% static 'css/app.css' %}">
+  <meta name="description" content="Let customers order food on WhatsApp. MenuChat answers in Darija, Arabic, French or English, takes the order from your menu and sends it to your kitchen.">
 </head>
-<body>
-  <div class="wrap">
-    <nav class="nav">
-      <a class="logo" href="/"><span class="logo-mark">🍽</span> MenuChat</a>
-      {% block nav %}<a class="btn btn-sm" href="{% url 'login' %}">Restaurant login</a>{% endblock %}
-    </nav>
-    {% block content %}{% endblock %}
-  </div>
+<body class="{% block body_class %}{% endblock %}">
+  {% block body %}{% endblock %}
   {% block scripts %}{% endblock %}
 </body>
 </html>

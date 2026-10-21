@@ -33,6 +33,7 @@ class MenuItemForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         self.fields["category"].queryset = restaurant.categories.all()
         self.fields["category"].empty_label = "No category"
+        self.fields["category"].label_from_instance = lambda category: category.name
         self.fields["price"].widget.attrs.update(min="0.01", step="0.01", inputmode="decimal")
         if not settings.PHOTO_UPLOADS_ENABLED:
             del self.fields["image"]

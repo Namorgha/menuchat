@@ -1,11 +1,15 @@
 {% extends "base.html" %}
 {% block title %}Sign in · MenuChat{% endblock %}
-{% block nav %}<a class="btn btn-sm" href="{% url 'landing' %}">← Back to site</a>{% endblock %}
-{% block content %}
-<div class="auth">
+{% block body_class %}on-tea auth-page{% endblock %}
+{% block body %}
+<header class="wrap site-top">
+  <a class="logo" href="{% url 'landing' %}">{% include "_logo.html" %}MenuChat</a>
+  <a class="signin" href="{% url 'landing' %}">Back to the site</a>
+</header>
+<main class="auth">
   <div class="auth-card">
     <h1>Restaurant sign in</h1>
-    <p class="muted">Manage live orders, your menu and opening hours.</p>
+    <p>Orders, chats, menu and delivery zones for your restaurant.</p>
 
     {% for message in messages %}<div class="flash {{ message.tags }}" role="alert">{{ message }}</div>{% endfor %}
     {% if form.non_field_errors %}
@@ -26,8 +30,8 @@
       {% csrf_token %}
       <button class="btn btn-block">Try the demo</button>
     </form>
-    <p class="muted demo-note">Signs you in to the demo restaurant. Place an order from the chat on the home page and watch it arrive.</p>
+    <p class="demo-note">Opens the demo restaurant's kitchen. Place an order from the chat on the home page and watch it arrive.</p>
     {% endif %}
   </div>
-</div>
+</main>
 {% endblock %}

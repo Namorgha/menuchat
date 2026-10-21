@@ -27,6 +27,7 @@
       <a class="btn btn-sm edit-only" href="{% url 'portal:category_delete' category.pk %}">Delete</a>
     </div>
   </header>
+  <div class="rail" aria-hidden="true"></div>
   {% include "portal/_menu_items.html" with items=category.items.all %}
   <a class="add-row edit-only" href="{% url 'portal:item_create' %}?category={{ category.pk }}">+ Add item to {{ category.name }}</a>
 </section>
@@ -37,6 +38,7 @@
 {% if uncategorized %}
 <section class="menu-cat" id="category-none">
   <header class="menu-cat-head"><h2>No category <span class="muted">{{ uncategorized|length }}</span></h2></header>
+  <div class="rail" aria-hidden="true"></div>
   {% include "portal/_menu_items.html" with items=uncategorized %}
 </section>
 {% endif %}

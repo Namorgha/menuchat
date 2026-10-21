@@ -22,7 +22,7 @@
   <div class="history-row">
     <span class="h-number">#{{ order.number }}</span>
     <span class="h-date">{{ order.created_at|date:"j M Y, H:i" }}</span>
-    <span class="h-customer">{{ order.customer.name|default:"Customer" }} · {{ order.get_fulfillment_display }}</span>
+    <span class="h-customer">{{ order.customer.name|default:"Customer" }}, {{ order.get_fulfillment_display|lower }}</span>
     <span class="h-items">{% for item in order.items.all %}{{ item.quantity }}× {{ item.name }}{% if not forloop.last %}, {% endif %}{% endfor %}</span>
     <span class="h-status"><span class="tag status-{{ order.status }}">{{ order.get_status_display }}</span></span>
     <span class="h-total num">{{ order.total }} {{ restaurant.currency }}</span>

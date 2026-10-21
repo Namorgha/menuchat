@@ -169,6 +169,10 @@ def toggle_open(request):
 
 # ---------- Orders ----------
 
+def _start_of_today():
+    return timezone.localtime().replace(hour=0, minute=0, second=0, microsecond=0)
+
+
 @portal_view
 @require_GET
 def orders(request):
@@ -179,7 +183,7 @@ def orders(request):
 @require_GET
 def orders_data(request):
     restaurant = request.restaurant
-    start_of_day = timezone.localtime().replace(hour=0, minute=0, second=0, microsecond=0)
+    start_of_day = _start_of_today()
     active = ~Q(status__in=[Order.Status.COMPLETED, Order.Status.CANCELLED])
     orders = (
         Order.objects.filter(restaurant=restaurant)
@@ -196,12 +200,18 @@ def orders_data(request):
             "customer": o.customer.name or "Customer",
             "channel": o.customer.channel,
             "fulfillment": o.get_fulfillment_display(),
-            "address": f"{o.delivery_address} ({o.delivery_zone})" if o.delivery_zone else o.delivery_address,
+            "address": o.delivery_address,
             "notes": o.notes,
             "total": f"{o.total:.2f} {restaurant.currency}",
             "payment": o.payment_label,
             "created": timezone.localtime(o.created_at).strftime("%H:%M"),
-            "items": [{"q": i.quantity, "name": i.name, "note": i.note} for i in o.items.all()],
+            "items": [
+                {"q": i.quantity, "name": i.name, "note": i.note, "price": f"{i.line_total:.2f}"} for i in o.items.all()
+            ],
+            "delivery": (
+                {"label": f"Delivery, {o.delivery_zone}" if o.delivery_zone else "Delivery", "fee": f"{o.delivery_fee:.2f}"}
+                if o.fulfillment == Order.Fulfillment.DELIVERY else None
+            ),
             "actions": [{"status": s, "label": ACTION_LABELS[s]} for s in NEXT_STATUSES.get(o.status, [])],
         }
 

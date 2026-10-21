@@ -1,27 +1,22 @@
-{% load static %}<!doctype html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  {% include "_head.html" %}
   <title>{% block title %}Portal{% endblock %} · {{ restaurant.name }}</title>
   <meta name="robots" content="noindex">
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' rx='16' fill='%230f7b5c'/><text x='32' y='44' font-size='34' text-anchor='middle'>🍽</text></svg>">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="{% static 'css/app.css' %}">
 </head>
 <body class="portal">
   <div class="shell">
-    <aside class="sidebar">
-      <a class="logo" href="{% url 'portal:orders' %}"><span class="logo-mark">🍽</span> MenuChat</a>
-      <nav class="side-nav" aria-label="Portal">
-        {% include "portal/_nav.html" %}
-      </nav>
-      <div class="side-foot">
-        <span class="who-am-i" title="{{ user.get_username }}">{{ user.get_username }}</span>
-        <form method="post" action="{% url 'logout' %}">{% csrf_token %}<button class="btn btn-sm btn-block">Log out</button></form>
-      </div>
-    </aside>
+    <nav class="spine" aria-label="Portal">
+      <a class="logo" href="{% url 'portal:orders' %}" aria-label="MenuChat">{% include "_logo.html" %}</a>
+      {% include "portal/_nav.html" %}
+      <form method="post" action="{% url 'logout' %}" class="logout">{% csrf_token %}
+        <button class="nav-link" title="Log out {{ user.get_username }}">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3M10 17l5-5-5-5M15 12H4"/></svg>
+          <span>Log out</span>
+        </button>
+      </form>
+    </nav>
 
     <div class="main">
       <header class="topbar">
@@ -63,17 +58,7 @@
     </div>
   </div>
 
-  <nav class="bottom-nav" aria-label="Portal">
-    {% include "portal/_nav.html" %}
-    <form method="post" action="{% url 'logout' %}">{% csrf_token %}
-      <button class="nav-link">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3M10 17l5-5-5-5M15 12H4"/></svg>
-        <span>Log out</span>
-      </button>
-    </form>
-  </nav>
-
-  <script src="{% static 'js/portal.js' %}" defer></script>
+  {% load static %}<script src="{% static 'js/portal.js' %}" defer></script>
   {% block scripts %}{% endblock %}
 </body>
 </html>

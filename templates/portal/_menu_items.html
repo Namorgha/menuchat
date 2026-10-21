@@ -2,7 +2,7 @@
 <ul class="menu-items">
   {% for item in items %}
   <li class="menu-item" id="item-{{ item.pk }}">
-    {% if item.image %}<img class="thumb" src="{{ item.image.url }}" alt="" loading="lazy">{% else %}<span class="thumb thumb-empty" aria-hidden="true">🍽</span>{% endif %}
+    {% if item.image %}<img class="thumb" src="{{ item.image.url }}" alt="" loading="lazy">{% else %}<span class="thumb thumb-empty" aria-hidden="true">{{ item.name|first|upper }}</span>{% endif %}
     <div class="menu-item-info">
       <div class="menu-item-title"><b>{{ item.name }}</b><span class="price">{{ item.price }} {{ restaurant.currency }}</span></div>
       {% if item.description %}<p class="muted">{{ item.description }}</p>{% endif %}
