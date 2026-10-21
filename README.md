@@ -10,10 +10,24 @@ Let restaurant customers order food on WhatsApp. An AI assistant answers in **Da
 - **AI with tool calling** — the model can show the menu, add/remove items, set delivery or pickup, place the order and check its status
 - **Server-side pricing** — the AI never produces prices or totals; every number comes from the database
 - **Order rules enforced in code** — opening state, minimum order, delivery address, sold-out items
-- **Kitchen dashboard** — live board (Incoming → In the kitchen → On the way → Done), one-tap status changes, pause orders
+- **Restaurant portal** — a mobile-first back office for restaurant staff (Django admin stays for the platform owner):
+  - **Orders** — live board (Incoming → In the kitchen → On the way → Done) with one-tap status changes, plus a paginated history with status filter and search by order number or customer
+  - **Menu** — add, edit, delete and reorder categories and items, prices, descriptions and photos; a sold-out switch that applies instantly
+  - **Settings** — name, description, opening hours, currency, delivery fee, minimum order, delivery/pickup
+  - **Open/closed switch** in the header on every page; validated forms with inline errors
+  - **"Try the demo"** one-click sign-in to the demo restaurant (optional, `DEMO_LOGIN_ENABLED=true`)
 - **Automatic customer updates** — each status change sends a WhatsApp message (or appears in the web demo chat)
-- **Multi-restaurant** — one server, many restaurants; incoming messages are routed by WhatsApp phone number ID, and staff only see their own restaurant
+- **Multi-restaurant** — one server, many restaurants; incoming messages are routed by WhatsApp phone number ID, and staff only see and edit their own restaurants
 - **Web demo chat** — try the full flow without WhatsApp, rate-limited per session
+
+## Screenshots
+
+<!-- Add screenshots to docs/screenshots/ and uncomment:
+| Live orders | Menu | Phone |
+|---|---|---|
+| ![Live orders](docs/screenshots/orders.png) | ![Menu](docs/screenshots/menu.png) | ![Phone](docs/screenshots/phone.png) |
+-->
+_Coming soon._
 
 ## Stack
 
@@ -38,7 +52,7 @@ WhatsApp ──► POST /webhooks/whatsapp/
                      ├─ model ⇄ tools loop (show_menu, add_to_cart, place_order, …)
                      │     └─ bot.ordering: validation + pricing + order creation (atomic)
                      └─ reply ──► WhatsApp Graph API
-Kitchen dashboard ── status change ──► signal ──► WhatsApp update to customer
+Portal ── status change ──► signal ──► WhatsApp update to customer
 ```
 
 ```
@@ -46,7 +60,8 @@ config/        settings (all from env vars), urls
 restaurants/   Restaurant, MenuItem, Order models · admin · status notifications · seed_demo
 bot/           Conversation model · ordering.py (business rules) · engine.py (AI tool loop) · tests
 whatsapp/      webhook (verify, signature, routing, dedupe) · Graph API client
-dashboard/     landing + demo chat · staff order board
+dashboard/     landing + web demo chat
+portal/        restaurant portal: sign-in, orders board + history, menu, settings · tests
 ```
 
 ## Run locally
@@ -61,8 +76,8 @@ python manage.py runserver
 ```
 
 - Landing page and demo chat: http://localhost:8000
-- Kitchen dashboard: http://localhost:8000/dashboard (log in with the staff user)
-- Menu and settings: http://localhost:8000/admin
+- Restaurant portal: http://localhost:8000/login/ (sign in with the staff user, or set `DEMO_LOGIN_ENABLED=true` for a "Try the demo" button)
+- Django admin (superusers only): http://localhost:8000/admin
 
 Or with Docker and Postgres: `docker compose up --build`.
 
@@ -75,12 +90,14 @@ Or with Docker and Postgres: `docker compose up --build`.
    python manage.py seed_demo --staff-username demo --staff-password <choose-one>
    ```
 
+Menu photos are saved under `MEDIA_ROOT` (default `media/`). Render's free plan has no persistent disk, so uploads are lost on redeploy; attach a disk and set `MEDIA_ROOT` to its mount path to keep them.
+
 ## Connect WhatsApp
 
 1. In Meta for Developers, create an app and add **WhatsApp**.
 2. Set the webhook URL to `https://<your-domain>/webhooks/whatsapp/`, use your `WHATSAPP_VERIFY_TOKEN`, and subscribe to **messages**.
 3. Put the app secret in `WHATSAPP_APP_SECRET` and a permanent access token in `WHATSAPP_ACCESS_TOKEN`.
-4. In the admin, set the restaurant's **WhatsApp phone number ID**.
+4. In the admin, set the restaurant's **WhatsApp phone number ID**, and add the owner's user to its **staff** so they can sign in to the portal.
 
 ## Tests
 
@@ -88,10 +105,11 @@ Or with Docker and Postgres: `docker compose up --build`.
 python manage.py test
 ```
 
-The tests cover pricing and order rules, the AI tool loop (with a scripted fake model), webhook signature checks, routing and duplicate handling, dashboard permissions and status transitions, and demo rate limiting.
+The tests cover pricing and order rules, the AI tool loop (with a scripted fake model), webhook signature checks, routing and duplicate handling, demo rate limiting, and the portal: permissions (staff of one restaurant can't see or edit another's orders, menu or settings), status transitions, order history, menu CRUD and validation, settings, and demo login.
 
 ## What's next
 
 - Process webhooks in a background queue, so slow AI replies never delay the 200 response to Meta
 - Online payment links
-- Menu photos and WhatsApp interactive lists for faster ordering
+- Send menu photos and WhatsApp interactive lists for faster ordering
+- Store menu photos in object storage (S3/R2)
