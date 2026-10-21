@@ -23,6 +23,7 @@
   <div class="form-actions">
     <button class="btn btn-primary">{% if item %}Save changes{% else %}Add to menu{% endif %}</button>
     <a class="btn" href="{% url 'portal:menu' %}">Cancel</a>
+    {% if item %}<a class="danger-link" href="{% url 'portal:item_delete' item.pk %}">Delete item</a>{% endif %}
   </div>
 </form>
 {% endblock %}

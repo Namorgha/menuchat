@@ -18,7 +18,7 @@
       <span class="spacer"></span>
       {% include "portal/_move.html" with url_name="portal:item_move" pk=item.pk first=forloop.first last=forloop.last label=item.name %}
       <a class="btn btn-sm" href="{% url 'portal:item_edit' item.pk %}">Edit</a>
-      <a class="btn btn-sm" href="{% url 'portal:item_delete' item.pk %}">Delete</a>
+      <a class="btn btn-sm wide-only" href="{% url 'portal:item_delete' item.pk %}">Delete</a>
     </div>
   </li>
   {% endfor %}
