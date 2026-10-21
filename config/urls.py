@@ -15,6 +15,7 @@ urlpatterns = [
     path("demo/send/", d.demo_send, name="demo_send"),
     path("demo/reset/", d.demo_reset, name="demo_reset"),
     path("login/", portal.LoginView.as_view(), name="login"),
+    path("login/demo/", portal.demo_login, name="demo_login"),
     path("logout/", auth_views.LogoutView.as_view(), name="logout"),
     path("portal/", include("portal.urls")),
     re_path(r"^dashboard/", portal.dashboard_redirect),  # old kitchen dashboard URLs

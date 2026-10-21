@@ -7,6 +7,7 @@
     <h1>Restaurant sign in</h1>
     <p class="muted">Manage live orders, your menu and opening hours.</p>
 
+    {% for message in messages %}<div class="flash {{ message.tags }}" role="alert">{{ message }}</div>{% endfor %}
     {% if form.non_field_errors %}
     <div class="form-errors" role="alert">{% for e in form.non_field_errors %}<p>{{ e }}</p>{% endfor %}</div>
     {% endif %}
@@ -18,6 +19,15 @@
       {% include "portal/_field.html" with field=form.password %}
       <button class="btn btn-primary btn-block">Sign in</button>
     </form>
+
+    {% if demo_login_enabled %}
+    <div class="divider">or</div>
+    <form method="post" action="{% url 'demo_login' %}">
+      {% csrf_token %}
+      <button class="btn btn-block">Try the demo</button>
+    </form>
+    <p class="muted demo-note">Signs you in to the demo restaurant. Place an order from the chat on the home page and watch it arrive.</p>
+    {% endif %}
   </div>
 </div>
 {% endblock %}

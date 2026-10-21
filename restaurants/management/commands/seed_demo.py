@@ -39,7 +39,7 @@ class Command(BaseCommand):
     help = "Create the demo restaurant with a menu (safe to run more than once)."
 
     def add_arguments(self, parser):
-        parser.add_argument("--staff-username", help="Create/attach a staff login for the dashboard")
+        parser.add_argument("--staff-username", help="Create/attach a staff login for the restaurant portal")
         parser.add_argument("--staff-password")
 
     def handle(self, *args, **opts):
@@ -62,10 +62,11 @@ class Command(BaseCommand):
                     MenuItem.objects.create(restaurant=r, category=cat, name=name, description=desc, price=Decimal(price), position=ipos)
         if opts.get("staff_username"):
             User = get_user_model()
-            user, _ = User.objects.get_or_create(username=opts["staff_username"], defaults={"is_staff": True})
+            user, _ = User.objects.get_or_create(username=opts["staff_username"])
             if opts.get("staff_password"):
                 user.set_password(opts["staff_password"])
-            user.is_staff = True
+            if not user.is_superuser:
+                user.is_staff = False  # restaurant staff use the portal; /admin/ is for superusers
             user.save()
             r.staff.add(user)
         self.stdout.write(self.style.SUCCESS(f"Demo restaurant ready: {r.name} ({r.items.count()} menu items)"))

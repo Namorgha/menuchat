@@ -1,11 +1,14 @@
+import logging
 from functools import wraps
 
+from django.conf import settings
 from django.contrib import messages
+from django.contrib.auth import get_user_model, login
 from django.contrib.auth import views as auth_views
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
 from django.db.models import Max, Prefetch, Q
-from django.http import JsonResponse
+from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -15,6 +18,9 @@ from django.views.decorators.http import require_GET, require_POST
 from restaurants.models import MenuCategory, MenuItem, Order, Restaurant
 
 from .forms import CategoryForm, MenuItemForm, RestaurantSettingsForm
+
+logger = logging.getLogger(__name__)
+User = get_user_model()
 
 SESSION_KEY = "portal_restaurant"
 
@@ -85,6 +91,31 @@ def page(request, template, section, context=None):
 class LoginView(auth_views.LoginView):
     template_name = "portal/login.html"
     redirect_authenticated_user = True
+
+    def get_context_data(self, **kwargs):
+        return {**super().get_context_data(**kwargs), "demo_login_enabled": settings.DEMO_LOGIN_ENABLED}
+
+
+@require_POST
+def demo_login(request):
+    """One click sign-in as the demo staff user, who can only manage the demo restaurant."""
+    if not settings.DEMO_LOGIN_ENABLED:
+        raise Http404
+    restaurant = Restaurant.objects.filter(slug=settings.DEMO_RESTAURANT_SLUG).first()
+    if not restaurant:
+        raise Http404("Demo restaurant not set up. Run: python manage.py seed_demo")
+    user, created = User.objects.get_or_create(username=settings.DEMO_STAFF_USERNAME)
+    if created:
+        user.set_unusable_password()
+        user.save()
+    if user.is_staff or user.is_superuser or user.restaurants.exclude(pk=restaurant.pk).exists():
+        logger.warning("Demo login refused: %r has access beyond the demo restaurant", user.username)
+        messages.error(request, "The demo account is unavailable right now. Please sign in normally.")
+        return redirect("login")
+    restaurant.staff.add(user)
+    login(request, user, backend="django.contrib.auth.backends.ModelBackend")
+    request.session[SESSION_KEY] = restaurant.slug
+    return redirect("portal:orders")
 
 
 # ---------- Shell ----------

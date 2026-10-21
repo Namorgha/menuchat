@@ -148,6 +148,8 @@ a { color: var(--brand); }
 .auth-card h1 { font-size: 24px; margin: 0 0 4px; letter-spacing: -0.01em; }
 .auth-card > p { margin: 0 0 20px; }
 .divider { display: flex; align-items: center; gap: 12px; color: var(--muted); font-size: 13px; margin: 20px 0; }
+.auth-card .flash { margin-bottom: 16px; }
+.demo-note { font-size: 13px; margin: 10px 0 0; text-align: center; }
 .divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: var(--line); }
 
 /* Shell */

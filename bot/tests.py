@@ -304,6 +304,17 @@ class DeploySetupTests(TestCase):
         self.assertEqual(Restaurant.objects.get().delivery_fee, Decimal("15"))
         self.assertEqual(MenuItem.objects.filter(restaurant=r).count(), 15)
 
+    def test_seed_demo_staff_user_gets_the_portal_not_the_admin(self):
+        User = get_user_model()
+        User.objects.create_user("demo", is_staff=True)  # created by an older seed_demo
+        call_command("seed_demo", staff_username="demo", staff_password="pw-123456", stdout=StringIO())
+        user = User.objects.get(username="demo")
+        self.assertFalse(user.is_staff)
+        self.assertEqual(list(user.restaurants.values_list("slug", flat=True)), ["dar-tangier"])
+        self.assertTrue(self.client.login(username="demo", password="pw-123456"))
+        self.assertEqual(self.client.get("/portal/orders/").status_code, 200)
+        self.assertEqual(self.client.get("/admin/").status_code, 302)
+
     @mock.patch.dict("os.environ", {
         "DJANGO_SUPERUSER_USERNAME": "boss", "DJANGO_SUPERUSER_EMAIL": "boss@example.com",
         "DJANGO_SUPERUSER_PASSWORD": "a-long-deploy-password",

@@ -125,6 +125,9 @@ WHATSAPP_ACCESS_TOKEN = os.getenv("WHATSAPP_ACCESS_TOKEN", "")  # default token 
 # --- Web demo -------------------------------------------------------------
 DEMO_RESTAURANT_SLUG = os.getenv("DEMO_RESTAURANT_SLUG", "dar-tangier")
 DEMO_MESSAGES_PER_SESSION = int(os.getenv("DEMO_MESSAGES_PER_SESSION", "40"))
+# "Try the demo" on the sign-in page logs visitors in as this user, who only manages the demo restaurant.
+DEMO_LOGIN_ENABLED = env_bool("DEMO_LOGIN_ENABLED", False)
+DEMO_STAFF_USERNAME = os.getenv("DEMO_STAFF_USERNAME", "demo")
 
 LOGGING = {
     "version": 1,

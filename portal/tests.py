@@ -364,3 +364,42 @@ class SettingsTests(PortalTestCase):
         self.a.refresh_from_db()
         self.b.refresh_from_db()
         self.assertEqual((self.a.name, self.b.name), ("Restaurant A", "Renamed"))
+
+
+@override_settings(DEMO_RESTAURANT_SLUG="demo-place", DEMO_STAFF_USERNAME="demo")
+class DemoLoginTests(TestCase):
+    def setUp(self):
+        self.demo = make_restaurant("demo-place", "Demo Place")
+        self.real = make_restaurant("real", "Real Restaurant")
+
+    @override_settings(DEMO_LOGIN_ENABLED=False)
+    def test_disabled_by_default(self):
+        self.assertNotContains(self.client.get("/login/"), "Try the demo")
+        self.assertEqual(self.client.post("/login/demo/").status_code, 404)
+        self.assertFalse(User.objects.filter(username="demo").exists())
+
+    @override_settings(DEMO_LOGIN_ENABLED=True)
+    def test_one_click_login_as_demo_staff_of_the_demo_restaurant_only(self):
+        self.assertContains(self.client.get("/login/"), "Try the demo")
+        self.assertEqual(self.client.get("/login/demo/").status_code, 405)  # POST only
+        self.assertRedirects(self.client.post("/login/demo/"), "/portal/orders/")
+        user = User.objects.get(username="demo")
+        self.assertFalse(user.has_usable_password())
+        self.assertFalse(user.is_staff)
+        self.assertEqual(list(user.restaurants.all()), [self.demo])
+        self.assertEqual(self.client.get("/portal/orders/").context["restaurant"], self.demo)
+        self.client.post("/portal/switch/", {"restaurant": "real"})
+        self.assertEqual(self.client.get("/portal/settings/").context["restaurant"], self.demo)
+        self.assertEqual(self.client.get("/admin/").status_code, 302)  # no admin access
+
+    @override_settings(DEMO_LOGIN_ENABLED=True)
+    def test_refuses_a_demo_user_with_wider_access(self):
+        user = User.objects.create_user("demo")
+        self.real.staff.add(user)
+        response = self.client.post("/login/demo/", follow=True)
+        self.assertContains(response, "demo account is unavailable")
+        self.assertNotIn("_auth_user_id", self.client.session)
+        User.objects.filter(pk=user.pk).update(is_superuser=True)
+        self.real.staff.remove(user)
+        self.client.post("/login/demo/")
+        self.assertNotIn("_auth_user_id", self.client.session)
