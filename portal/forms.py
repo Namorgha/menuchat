@@ -1,10 +1,11 @@
 from decimal import Decimal
 
 from django import forms
+from django.conf import settings
 
 from restaurants.models import MenuCategory, MenuItem, Restaurant
 
-MAX_IMAGE_BYTES = 5 * 1024 * 1024
+MAX_IMAGE_BYTES = 4 * 1024 * 1024  # Vercel rejects request bodies over 4.5 MB
 
 
 class CategoryForm(forms.ModelForm):
@@ -25,7 +26,7 @@ class MenuItemForm(forms.ModelForm):
         model = MenuItem
         fields = ["category", "name", "description", "price", "image", "is_available"]
         labels = {"is_available": "Available to order"}
-        help_texts = {"description": "Shown to customers and used by the assistant.", "image": "JPG or PNG, up to 5 MB."}
+        help_texts = {"description": "Shown to customers and used by the assistant.", "image": "JPG or PNG, up to 4 MB."}
         widgets = {"description": forms.Textarea(attrs={"rows": 3})}
 
     def __init__(self, *args, restaurant: Restaurant, **kwargs):
@@ -33,6 +34,8 @@ class MenuItemForm(forms.ModelForm):
         self.fields["category"].queryset = restaurant.categories.all()
         self.fields["category"].empty_label = "No category"
         self.fields["price"].widget.attrs.update(min="0.01", step="0.01", inputmode="decimal")
+        if not settings.PHOTO_UPLOADS_ENABLED:
+            del self.fields["image"]
 
     def clean_name(self):
         name = self.cleaned_data["name"].strip()
@@ -49,7 +52,7 @@ class MenuItemForm(forms.ModelForm):
     def clean_image(self):
         image = self.cleaned_data.get("image")
         if image and getattr(image, "size", 0) > MAX_IMAGE_BYTES:
-            raise forms.ValidationError("That photo is too large (max 5 MB).")
+            raise forms.ValidationError("That photo is too large (max 4 MB).")
         return image
 
 

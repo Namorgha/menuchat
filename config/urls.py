@@ -22,6 +22,8 @@ urlpatterns = [
     path("webhooks/whatsapp/", webhook, name="whatsapp_webhook"),
     path("healthz", lambda r: HttpResponse("ok")),
     path("admin/", admin.site.urls),
-    # Menu photos. Small enough to serve from Django; put a CDN or object storage in front at scale.
-    re_path(r"^media/(?P<path>.*)$", serve, {"document_root": settings.MEDIA_ROOT}),
 ]
+
+if not settings.BLOB_READ_WRITE_TOKEN:
+    # Menu photos on the local disk. Small enough to serve from Django; Vercel Blob serves its own.
+    urlpatterns.append(re_path(r"^media/(?P<path>.*)$", serve, {"document_root": settings.MEDIA_ROOT}))

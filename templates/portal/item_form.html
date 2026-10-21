@@ -17,8 +17,10 @@
     {% include "portal/_field.html" with field=form.category %}
   </div>
   {% include "portal/_field.html" with field=form.description %}
+  {% if "image" in form.fields %}
   {% if item.image %}<img class="photo-preview" src="{{ item.image.url }}" alt="Current photo of {{ item.name }}">{% endif %}
   {% include "portal/_field.html" with field=form.image %}
+  {% endif %}
   {% include "portal/_field.html" with field=form.is_available %}
   <div class="form-actions">
     <button class="btn btn-primary">{% if item %}Save changes{% else %}Add to menu{% endif %}</button>

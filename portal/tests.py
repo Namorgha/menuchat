@@ -7,11 +7,13 @@ from unittest import mock
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
+import requests
 from PIL import Image
 
 from bot import ordering
 from bot.models import Conversation
 from restaurants.models import Customer, MenuCategory, MenuItem, Order, Restaurant
+from restaurants.storage import VercelBlobStorage
 
 User = get_user_model()
 
@@ -403,3 +405,74 @@ class DemoLoginTests(TestCase):
         self.real.staff.remove(user)
         self.client.post("/login/demo/")
         self.assertNotIn("_auth_user_id", self.client.session)
+
+
+BLOB_TOKEN = "vercel_blob_rw_AbC123StoreId_s3cr3t"
+
+
+class PhotoStorageTests(PortalTestCase):
+    def setUp(self):
+        super().setUp()
+        self.client.force_login(self.chef)
+
+    def create(self, **extra):
+        data = {"name": "Harira", "price": "15", "is_available": "on", "image": png(), **extra}
+        return self.client.post("/portal/menu/items/new/", data)
+
+    def use_blob(self):
+        storage = VercelBlobStorage(token=BLOB_TOKEN)
+        patcher = mock.patch.object(MenuItem._meta.get_field("image"), "storage", storage)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    @override_settings(PHOTO_UPLOADS_ENABLED=False)
+    def test_photo_field_is_hidden_when_there_is_nowhere_to_store_photos(self):
+        page = self.client.get("/portal/menu/items/new/")
+        self.assertNotContains(page, 'name="image"')
+        self.assertRedirects(self.create(), f"/portal/menu/#item-{self.a.items.get().pk}")
+        self.assertFalse(self.a.items.get().image)
+
+    @mock.patch("restaurants.storage.requests.put")
+    def test_photos_go_to_vercel_blob(self, put):
+        self.use_blob()
+        put.return_value = mock.Mock(status_code=200, json=lambda: {"pathname": "menu/2026/10/photo-1a2b3c4d.png"})
+        self.assertEqual(self.create().status_code, 302)
+        kwargs = put.call_args.kwargs
+        self.assertEqual(put.call_args.args[0], "https://vercel.com/api/blob/")
+        self.assertRegex(kwargs["params"]["pathname"], r"^menu/\d{4}/\d{2}/photo-[0-9a-f]{8}\.png$")
+        self.assertEqual(kwargs["headers"]["authorization"], f"Bearer {BLOB_TOKEN}")
+        self.assertEqual(kwargs["headers"]["x-vercel-blob-store-id"], "AbC123StoreId")
+        self.assertEqual(kwargs["headers"]["x-vercel-blob-access"], "public")
+        self.assertEqual(kwargs["headers"]["x-content-type"], "image/png")
+        self.assertTrue(kwargs["data"].startswith(b"\x89PNG"))
+        item = self.a.items.get()
+        self.assertEqual(item.image.name, "menu/2026/10/photo-1a2b3c4d.png")
+        self.assertEqual(item.image.url, "https://abc123storeid.public.blob.vercel-storage.com/menu/2026/10/photo-1a2b3c4d.png")
+
+    @mock.patch("restaurants.storage.requests.put")
+    def test_blob_failures_show_an_error_instead_of_a_500(self, put):
+        self.use_blob()
+        failing = mock.Mock()
+        failing.raise_for_status.side_effect = requests.HTTPError("503 Service Unavailable")
+        for outcome in [requests.ConnectionError("timed out"), failing]:
+            put.reset_mock(side_effect=True, return_value=True)
+            if isinstance(outcome, Exception):
+                put.side_effect = outcome
+            else:
+                put.return_value = outcome
+            with self.assertLogs("portal.views", "ERROR"):
+                response = self.create()
+            self.assertEqual(response.status_code, 200)
+            self.assertContains(response, "Couldn&#x27;t upload the photo")
+            self.assertFalse(self.a.items.exists())
+
+    def test_read_only_disk_shows_an_error_instead_of_a_500(self):
+        item = MenuItem.objects.create(restaurant=self.a, name="Tagine", price=Decimal("65"))
+        with mock.patch("django.core.files.storage.FileSystemStorage._save", side_effect=OSError(30, "Read-only file system")):
+            with self.assertLogs("portal.views", "ERROR"):
+                response = self.client.post(f"/portal/menu/items/{item.pk}/edit/", {"name": "Tagine", "price": "65", "image": png()})
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("image", response.context["form"].errors)
+        item.refresh_from_db()
+        self.assertFalse(item.image)
+

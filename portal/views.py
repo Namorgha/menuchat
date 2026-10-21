@@ -7,6 +7,7 @@ from django.contrib.auth import get_user_model, login
 from django.contrib.auth import views as auth_views
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
+from django.db import transaction
 from django.db.models import Max, Prefetch, Q
 from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -16,6 +17,7 @@ from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_GET, require_POST
 
 from restaurants.models import MenuCategory, MenuItem, Order, Restaurant
+from restaurants.storage import PhotoUploadError
 
 from .forms import CategoryForm, MenuItemForm, RestaurantSettingsForm
 
@@ -316,6 +318,18 @@ def category_move(request, pk):
     return redirect(f"{reverse('portal:menu')}#category-{category.pk}")
 
 
+def _save_item(form, item) -> bool:
+    """Save an item; if its photo can't be stored, keep the form open with an error instead of a 500."""
+    try:
+        with transaction.atomic():  # a failed upload mustn't break the surrounding transaction
+            item.save()
+    except (PhotoUploadError, OSError):
+        logger.exception("Menu photo upload failed")
+        form.add_error("image" if "image" in form.fields else None, "Couldn't upload the photo. Try again, or save without it.")
+        return False
+    return True
+
+
 @portal_view
 def item_create(request):
     restaurant = request.restaurant
@@ -326,9 +340,9 @@ def item_create(request):
         item = form.save(commit=False)
         item.restaurant = restaurant
         item.position = _next_position(restaurant.items.filter(category=item.category))
-        item.save()
-        messages.success(request, f"“{item.name}” added to the menu.")
-        return redirect(f"{reverse('portal:menu')}#item-{item.pk}")
+        if _save_item(form, item):
+            messages.success(request, f"“{item.name}” added to the menu.")
+            return redirect(f"{reverse('portal:menu')}#item-{item.pk}")
     return page(request, "portal/item_form.html", "menu", {"form": form})
 
 
@@ -341,9 +355,9 @@ def item_edit(request, pk):
         item = form.save(commit=False)
         if item.category_id != old_category_id:
             item.position = _next_position(request.restaurant.items.filter(category=item.category).exclude(pk=item.pk))
-        item.save()
-        messages.success(request, f"“{item.name}” saved.")
-        return redirect(f"{reverse('portal:menu')}#item-{item.pk}")
+        if _save_item(form, item):
+            messages.success(request, f"“{item.name}” saved.")
+            return redirect(f"{reverse('portal:menu')}#item-{item.pk}")
     return page(request, "portal/item_form.html", "menu", {"form": form, "item": item})
 
 

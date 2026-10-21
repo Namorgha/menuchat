@@ -90,7 +90,7 @@ Or with Docker and Postgres: `docker compose up --build`.
    python manage.py seed_demo --staff-username demo --staff-password <choose-one>
    ```
 
-Menu photos are saved under `MEDIA_ROOT` (default `media/`). Render's free plan has no persistent disk, so uploads are lost on redeploy; attach a disk and set `MEDIA_ROOT` to its mount path to keep them.
+Menu photos are stored in **Vercel Blob** when `BLOB_READ_WRITE_TOKEN` is set (Vercel → Storage → Blob), otherwise under `MEDIA_ROOT` (default `media/`). On Vercel without a Blob token the photo field is hidden, since there's no writable disk. Render's free plan has no persistent disk either: use Blob, or attach a disk and set `MEDIA_ROOT` to its mount path.
 
 ## Connect WhatsApp
 
@@ -105,7 +105,7 @@ Menu photos are saved under `MEDIA_ROOT` (default `media/`). Render's free plan 
 python manage.py test
 ```
 
-The tests cover pricing and order rules, the AI tool loop (with a scripted fake model), webhook signature checks, routing and duplicate handling, demo rate limiting, and the portal: permissions (staff of one restaurant can't see or edit another's orders, menu or settings), status transitions, order history, menu CRUD and validation, settings, and demo login.
+The tests cover pricing and order rules, the AI tool loop (with a scripted fake model), webhook signature checks, routing and duplicate handling, demo rate limiting, and the portal: permissions (staff of one restaurant can't see or edit another's orders, menu or settings), status transitions, order history, menu CRUD and validation, photo storage (Vercel Blob and upload failures), settings, and demo login.
 
 ## What's next
 

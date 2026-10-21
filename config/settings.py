@@ -89,11 +89,19 @@ USE_TZ = True
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 STATICFILES_DIRS = [BASE_DIR / "static"]
-# Uploaded menu photos. On hosts with an ephemeral disk, point MEDIA_ROOT at a mounted volume.
+# Menu photos: Vercel Blob when BLOB_READ_WRITE_TOKEN is set, else the local disk (MEDIA_ROOT; point it at a
+# mounted volume on hosts with an ephemeral disk). On Vercel without a Blob token there's nowhere to keep them,
+# so photo uploads are turned off.
+BLOB_READ_WRITE_TOKEN = os.getenv("BLOB_READ_WRITE_TOKEN", "")
+PHOTO_UPLOADS_ENABLED = bool(BLOB_READ_WRITE_TOKEN) or not os.getenv("VERCEL")
 MEDIA_URL = "/media/"
 MEDIA_ROOT = Path(os.getenv("MEDIA_ROOT") or BASE_DIR / "media")
 STORAGES = {
-    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+    "default": {
+        "BACKEND": "restaurants.storage.VercelBlobStorage"
+        if BLOB_READ_WRITE_TOKEN
+        else "django.core.files.storage.FileSystemStorage"
+    },
     "staticfiles": {
         "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"
         if DEBUG or "test" in sys.argv
