@@ -14,7 +14,7 @@
   <div class="wrap">
     <nav class="nav">
       <a class="logo" href="/"><span class="logo-mark">🍽</span> MenuChat</a>
-      {% block nav %}<a class="btn btn-sm" href="/dashboard/">Restaurant login</a>{% endblock %}
+      {% block nav %}<a class="btn btn-sm" href="{% url 'login' %}">Restaurant login</a>{% endblock %}
     </nav>
     {% block content %}{% endblock %}
   </div>

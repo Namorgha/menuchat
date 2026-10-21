@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}No restaurant · MenuChat{% endblock %}
+{% block nav %}<form method="post" action="{% url 'logout' %}" style="margin:0">{% csrf_token %}<button class="btn btn-sm">Log out</button></form>{% endblock %}
+{% block content %}
+<div class="auth">
+  <div class="auth-card">
+    <h1>No restaurant yet</h1>
+    <p class="muted">Your account ({{ user.get_username }}) isn't linked to a restaurant. Ask the MenuChat team to add you as staff.</p>
+  </div>
+</div>
+{% endblock %}

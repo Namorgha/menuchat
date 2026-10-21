@@ -1,0 +1,7 @@
+<div class="page-head">
+  <h1>Orders</h1>
+  <div class="tabs" role="tablist">
+    <a href="{% url 'portal:orders' %}" role="tab" {% if tab == "live" %}aria-selected="true"{% endif %}>Live board</a>
+    <a href="{% url 'portal:order_history' %}" role="tab" {% if tab == "history" %}aria-selected="true"{% endif %}>History</a>
+  </div>
+</div>

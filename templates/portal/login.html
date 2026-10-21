@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Sign in · MenuChat{% endblock %}
+{% block nav %}<a class="btn btn-sm" href="{% url 'landing' %}">← Back to site</a>{% endblock %}
+{% block content %}
+<div class="auth">
+  <div class="auth-card">
+    <h1>Restaurant sign in</h1>
+    <p class="muted">Manage live orders, your menu and opening hours.</p>
+
+    {% if form.non_field_errors %}
+    <div class="form-errors" role="alert">{% for e in form.non_field_errors %}<p>{{ e }}</p>{% endfor %}</div>
+    {% endif %}
+
+    <form method="post" action="{% url 'login' %}" class="form" novalidate>
+      {% csrf_token %}
+      <input type="hidden" name="next" value="{{ next }}">
+      {% include "portal/_field.html" with field=form.username %}
+      {% include "portal/_field.html" with field=form.password %}
+      <button class="btn btn-primary btn-block">Sign in</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

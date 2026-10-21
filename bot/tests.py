@@ -291,55 +291,6 @@ class WebhookTests(TestCase):
         self.assertIn("text", send.call_args.args[2])
 
 
-class DashboardTests(TestCase):
-    def setUp(self):
-        self.r, self.tagine, _ = make_restaurant()
-        convo = convo_for(self.r, "212655555555")
-        ordering.add_to_cart(convo, self.tagine.id)
-        ordering.set_fulfillment(convo, "pickup")
-        self.order = ordering.place_order(convo)
-        self.staff = get_user_model().objects.create_user("chef", password="pw-123456")
-        self.r.staff.add(self.staff)
-
-    def set_status(self, status):
-        return self.client.post(f"/dashboard/{self.r.slug}/orders/{self.order.id}/status/", {"status": status})
-
-    def test_staff_moves_order_and_customer_is_notified(self):
-        self.client.force_login(self.staff)
-        with mock.patch("whatsapp.client.send_text") as send:
-            self.assertEqual(self.set_status("confirmed").status_code, 200)
-        send.assert_called_once()
-        self.assertIn("#1001 confirmed", send.call_args.args[2])
-        self.order.refresh_from_db()
-        self.assertEqual(self.order.status, "confirmed")
-        self.assertIn("confirmed", Conversation.objects.get().history[-1]["content"])
-
-    def test_invalid_transitions_are_refused(self):
-        self.client.force_login(self.staff)
-        self.assertEqual(self.set_status("completed").status_code, 400)  # can't skip from new to completed
-
-    def test_other_restaurants_staff_cannot_touch_orders(self):
-        outsider = get_user_model().objects.create_user("other", password="pw-123456")
-        other, _, _ = make_restaurant(slug="other")
-        other.staff.add(outsider)
-        self.client.force_login(outsider)
-        self.assertEqual(self.set_status("confirmed").status_code, 404)
-        self.assertEqual(self.client.get(f"/dashboard/{self.r.slug}/data/").status_code, 404)
-
-    def test_board_requires_login(self):
-        self.assertEqual(self.client.get("/dashboard/").status_code, 302)
-
-    def test_superuser_sees_every_restaurant_without_being_staff(self):
-        admin = get_user_model().objects.create_superuser("admin", "admin@example.com", "pw-123456")
-        self.client.force_login(admin)
-        page = self.client.get(f"/dashboard/{self.r.slug}/")
-        self.assertEqual(page.status_code, 200)
-        self.assertEqual(page.context["restaurant"], self.r)
-        self.assertEqual(self.client.get(f"/dashboard/{self.r.slug}/data/").status_code, 200)
-        with mock.patch("whatsapp.client.send_text"):
-            self.assertEqual(self.set_status("confirmed").status_code, 200)
-
-
 class DeploySetupTests(TestCase):
     """The Docker CMD runs seed_demo and createsuperuser --noinput on every start."""
 

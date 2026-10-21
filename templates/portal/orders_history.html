@@ -1,0 +1,45 @@
+{% extends "portal/base.html" %}
+{% block title %}Order history{% endblock %}
+{% block content %}
+{% include "portal/_orders_tabs.html" %}
+
+<form method="get" class="filters" role="search">
+  <input type="search" name="q" value="{{ q }}" placeholder="Order # or customer" aria-label="Search by order number or customer">
+  <select name="status" aria-label="Status">
+    <option value="">All statuses</option>
+    {% for value, label in statuses %}<option value="{{ value }}" {% if value == status %}selected{% endif %}>{{ label }}</option>{% endfor %}
+  </select>
+  <button class="btn btn-primary">Filter</button>
+  {% if q or status %}<a class="btn" href="{% url 'portal:order_history' %}">Clear</a>{% endif %}
+</form>
+
+{% if page_obj.object_list %}
+<div class="history">
+  <div class="history-row history-head" aria-hidden="true">
+    <span>Order</span><span>Placed</span><span>Customer</span><span>Items</span><span>Status</span><span class="num">Total</span>
+  </div>
+  {% for order in page_obj %}
+  <div class="history-row">
+    <span class="h-number">#{{ order.number }}</span>
+    <span class="h-date">{{ order.created_at|date:"j M Y, H:i" }}</span>
+    <span class="h-customer">{{ order.customer.name|default:"Customer" }} · {{ order.get_fulfillment_display }}</span>
+    <span class="h-items">{% for item in order.items.all %}{{ item.quantity }}× {{ item.name }}{% if not forloop.last %}, {% endif %}{% endfor %}</span>
+    <span class="h-status"><span class="tag status-{{ order.status }}">{{ order.get_status_display }}</span></span>
+    <span class="h-total num">{{ order.total }} {{ restaurant.currency }}</span>
+  </div>
+  {% endfor %}
+</div>
+
+{% if page_obj.paginator.num_pages > 1 %}
+<nav class="pager" aria-label="Pages">
+  {% if page_obj.has_previous %}<a class="btn btn-sm" href="?{% if query %}{{ query }}&{% endif %}page={{ page_obj.previous_page_number }}">← Newer</a>{% else %}<span></span>{% endif %}
+  <span class="muted">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>
+  {% if page_obj.has_next %}<a class="btn btn-sm" href="?{% if query %}{{ query }}&{% endif %}page={{ page_obj.next_page_number }}">Older →</a>{% else %}<span></span>{% endif %}
+</nav>
+{% endif %}
+{% else %}
+<div class="empty-state">
+  {% if q or status %}No orders match your filters.{% else %}No orders yet. They'll show up here once customers start ordering.{% endif %}
+</div>
+{% endif %}
+{% endblock %}

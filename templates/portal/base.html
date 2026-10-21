@@ -1,0 +1,75 @@
+{% load static %}<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Portal{% endblock %} · {{ restaurant.name }}</title>
+  <meta name="robots" content="noindex">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' rx='16' fill='%230f7b5c'/><text x='32' y='44' font-size='34' text-anchor='middle'>🍽</text></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{% static 'css/app.css' %}">
+</head>
+<body class="portal">
+  <div class="shell">
+    <aside class="sidebar">
+      <a class="logo" href="{% url 'portal:orders' %}"><span class="logo-mark">🍽</span> MenuChat</a>
+      <nav class="side-nav" aria-label="Portal">
+        {% include "portal/_nav.html" %}
+      </nav>
+      <div class="side-foot">
+        <span class="who-am-i" title="{{ user.get_username }}">{{ user.get_username }}</span>
+        <form method="post" action="{% url 'logout' %}">{% csrf_token %}<button class="btn btn-sm btn-block">Log out</button></form>
+      </div>
+    </aside>
+
+    <div class="main">
+      <header class="topbar">
+        <div class="topbar-title">
+          {% if request.restaurants|length > 1 %}
+          <form method="post" action="{% url 'portal:switch' %}" class="switcher">
+            {% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}">
+            <select name="restaurant" aria-label="Restaurant" onchange="this.form.submit()">
+              {% for r in request.restaurants %}<option value="{{ r.slug }}" {% if r.pk == restaurant.pk %}selected{% endif %}>{{ r.name }}</option>{% endfor %}
+            </select>
+            <noscript><button class="btn btn-sm">Switch</button></noscript>
+          </form>
+          {% else %}
+          <span class="restaurant-name">{{ restaurant.name }}</span>
+          {% endif %}
+        </div>
+        <form method="post" action="{% url 'portal:toggle_open' %}" data-switch>
+          {% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}">
+          <button type="submit" class="toggle" role="switch" aria-checked="{{ restaurant.is_open|yesno:'true,false' }}" title="Open or pause orders">
+            <span class="toggle-track" aria-hidden="true"></span>
+            <span class="toggle-label">{{ restaurant.is_open|yesno:"Open,Closed" }}</span>
+          </button>
+        </form>
+      </header>
+
+      {% if messages %}
+      <div class="flash-stack" role="status">
+        {% for message in messages %}<div class="flash {{ message.tags }}">{{ message }}</div>{% endfor %}
+      </div>
+      {% endif %}
+
+      <main class="content">
+        {% block content %}{% endblock %}
+      </main>
+    </div>
+  </div>
+
+  <nav class="bottom-nav" aria-label="Portal">
+    {% include "portal/_nav.html" %}
+    <form method="post" action="{% url 'logout' %}">{% csrf_token %}
+      <button class="nav-link">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3M10 17l5-5-5-5M15 12H4"/></svg>
+        <span>Log out</span>
+      </button>
+    </form>
+  </nav>
+
+  <script src="{% static 'js/portal.js' %}" defer></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>
