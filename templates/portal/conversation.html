@@ -1,0 +1,67 @@
+{% extends "portal/base.html" %}
+{% block title %}{{ convo.customer.name|default:"Customer" }} · Inbox{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <a class="back" href="{% url 'portal:inbox' %}">← Inbox</a>
+    <h1>{{ convo.customer.name|default:"Customer" }}</h1>
+    <p class="muted">
+      {% if convo.customer.phone %}<a href="https://wa.me/{{ convo.customer.external_id }}" target="_blank" rel="noopener">{{ convo.customer.phone }}</a>{% else %}Web demo visitor{% endif %}
+      · <a href="{% url 'portal:order_history' %}?q={{ convo.customer.external_id|urlencode }}">Orders</a>
+    </p>
+  </div>
+  <form method="post" action="{% url 'portal:toggle_takeover' convo.pk %}">
+    {% csrf_token %}<input type="hidden" name="next" value="{{ request.path }}">
+    {% if convo.bot_paused %}
+    <button class="btn" {% if read_only %}disabled{% endif %}>Hand back to bot</button>
+    {% else %}
+    <button class="btn btn-primary" {% if read_only %}disabled{% endif %}>Take over</button>
+    {% endif %}
+  </form>
+</div>
+
+<div class="handover-state {% if convo.bot_paused %}paused{% endif %}" id="handover-state">
+  {% if convo.taken_over %}
+  <b>You're answering.</b> The bot won't reply to this customer until you hand back.
+  {% elif convo.bot_paused %}
+  <b>Paused after a reply from the WhatsApp Business app</b> until {{ convo.bot_paused_until|time:"H:i" }}. Hand back to resume the bot now.
+  {% else %}
+  <b>The bot is answering.</b> Take over to reply yourself.
+  {% endif %}
+</div>
+
+<div class="chat-log" id="chat-log" data-last="{{ last_id }}">
+  {% include "portal/_chat.html" %}
+</div>
+
+<form method="post" action="{% url 'portal:reply' convo.pk %}" class="composer-form" id="composer">
+  {% csrf_token %}<input type="hidden" name="next" value="{{ request.path }}">
+  {% if convo.customer.channel == "whatsapp" and not convo.in_service_window %}
+  <p class="muted composer-note">The customer last wrote more than 24 hours ago, so WhatsApp won't deliver a free-form reply. They need to message you first.</p>
+  {% endif %}
+  <fieldset class="plain composer-row" {% if read_only or not convo.bot_paused %}disabled{% endif %}>
+    <label for="reply-text" class="sr-only">Reply</label>
+    <textarea id="reply-text" name="text" rows="2" maxlength="4096" required placeholder="{% if convo.bot_paused %}Type a reply…{% else %}Take over to reply{% endif %}"></textarea>
+    <button class="btn btn-primary">Send</button>
+  </fieldset>
+</form>
+{% endblock %}
+{% block scripts %}
+<script>
+(() => {
+  const log = document.getElementById("chat-log");
+  const scrollDown = () => { log.scrollTop = log.scrollHeight; };
+  scrollDown();
+  setInterval(async () => {
+    const r = await fetch(location.pathname, { credentials: "same-origin", headers: { Accept: "application/json" } }).catch(() => null);
+    if (!r || !r.ok) return;
+    const d = await r.json();
+    if (String(d.last) === log.dataset.last) return;
+    const atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 40;
+    log.innerHTML = d.html;
+    log.dataset.last = d.last;
+    if (atBottom) scrollDown();
+  }, 5000);
+})();
+</script>
+{% endblock %}

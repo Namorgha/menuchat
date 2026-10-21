@@ -1,5 +1,6 @@
 import shutil
 import tempfile
+from datetime import timedelta
 from decimal import Decimal
 from io import BytesIO
 from unittest import mock
@@ -7,6 +8,7 @@ from unittest import mock
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
+from django.utils import timezone
 import requests
 from PIL import Image
 
@@ -550,3 +552,74 @@ class DemoReadOnlyTests(TestCase):
         self.client.post(f"/portal/menu/items/{self.item.pk}/availability/")
         self.item.refresh_from_db()
         self.assertFalse(self.item.is_available)
+
+
+class InboxTests(PortalTestCase):
+    def setUp(self):
+        super().setUp()
+        self.customer = Customer.objects.create(restaurant=self.a, external_id="212611111111", name="Sara")
+        self.convo = Conversation.objects.create(customer=self.customer)
+        self.convo.add_message("user", "Salam, do you deliver to Malabata?")
+        self.convo.add_message("assistant", "Yes we do!")
+        self.convo.save()
+        other = Conversation.objects.create(customer=Customer.objects.create(restaurant=self.b, external_id="2126999", name="B customer"))
+        other.add_message("user", "secret B message")
+        other.save()
+        self.other_convo = other
+        self.client.force_login(self.chef)
+
+    def test_inbox_lists_own_conversations_with_last_message(self):
+        page = self.client.get("/portal/inbox/")
+        self.assertContains(page, "Sara")
+        self.assertContains(page, "+212611111111")
+        self.assertContains(page, "Yes we do!")
+        self.assertNotContains(page, "secret B message")
+
+    def test_open_conversation_shows_full_chat(self):
+        page = self.client.get(f"/portal/inbox/{self.convo.pk}/")
+        self.assertContains(page, "do you deliver to Malabata?")
+        self.assertContains(page, "Take over")
+        data = self.client.get(f"/portal/inbox/{self.convo.pk}/", HTTP_ACCEPT="application/json").json()
+        self.assertEqual(data["last"], self.convo.messages.last().pk)
+        self.assertIn("Yes we do!", data["html"])
+
+    def test_take_over_reply_and_hand_back(self):
+        url = f"/portal/inbox/{self.convo.pk}/"
+        self.client.post(url + "takeover/")
+        self.convo.refresh_from_db()
+        self.assertTrue(self.convo.taken_over)
+        with mock.patch("whatsapp.client.send_text", return_value=True) as send:
+            response = self.client.post(url + "reply/", {"text": "Yes, 15 MAD to Malabata"})
+        self.assertRedirects(response, url + "#composer", fetch_redirect_response=False)
+        send.assert_called_once_with(self.a, "212611111111", "Yes, 15 MAD to Malabata")
+        self.assertContains(self.client.get(url), "Yes, 15 MAD to Malabata")
+        self.client.post(url + "takeover/")
+        self.convo.refresh_from_db()
+        self.assertFalse(self.convo.bot_paused)
+
+    def test_reply_refused_unless_taken_over_or_outside_24_hours(self):
+        url = f"/portal/inbox/{self.convo.pk}/"
+        with mock.patch("whatsapp.client.send_text") as send:
+            response = self.client.post(url + "reply/", {"text": "hi"}, follow=True)
+            self.assertContains(response, "Take over the conversation before replying")
+            Conversation.objects.filter(pk=self.convo.pk).update(
+                taken_over=True, last_customer_message_at=timezone.now() - timedelta(hours=25)
+            )
+            response = self.client.post(url + "reply/", {"text": "hi"}, follow=True)
+            self.assertContains(response, "more than 24 hours ago")
+        send.assert_not_called()
+
+    def test_other_restaurants_conversations_are_off_limits(self):
+        url = f"/portal/inbox/{self.other_convo.pk}/"
+        self.assertEqual(self.client.get(url).status_code, 404)
+        self.assertEqual(self.client.post(url + "takeover/").status_code, 404)
+        self.assertEqual(self.client.post(url + "reply/", {"text": "hi"}).status_code, 404)
+        self.other_convo.refresh_from_db()
+        self.assertFalse(self.other_convo.taken_over)
+
+    @override_settings(DEMO_STAFF_USERNAME="chef")
+    def test_demo_user_cannot_take_over_or_reply(self):
+        url = f"/portal/inbox/{self.convo.pk}/"
+        self.client.post(url + "takeover/", {"next": url})
+        self.convo.refresh_from_db()
+        self.assertFalse(self.convo.taken_over)

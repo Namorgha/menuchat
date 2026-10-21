@@ -9,7 +9,7 @@ from django.http import HttpResponse, HttpResponseForbidden
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
-from bot.engine import handle_message
+from bot.engine import conversation_for, handle_message, record_customer_message
 from bot.models import ProcessedMessage
 from restaurants.models import Restaurant
 
@@ -78,10 +78,17 @@ def _handle_inbound(restaurant, msg: dict, names: dict) -> None:
         reply = msg.get("interactive", {})
         text = (reply.get("button_reply") or reply.get("list_reply") or {}).get("title", "")
     else:
-        send_text(restaurant, wa_id, "I can only read text messages for now — please type your order 🙂")
+        convo = conversation_for(restaurant, wa_id, names.get(wa_id, ""))
+        record_customer_message(convo, f"[{msg.get('type', 'unknown')} message]")  # staff can see it in the inbox
+        if not convo.bot_paused:
+            answer = "I can only read text messages for now — please type your order 🙂"
+            convo.add_message("assistant", answer)
+            convo.save(update_fields=["history", "updated_at"])
+            send_text(restaurant, wa_id, answer)
         return
 
     if not text.strip():
         return
     reply = handle_message(restaurant, wa_id, names.get(wa_id, ""), text)
-    send_text(restaurant, wa_id, reply)
+    if reply is not None:
+        send_text(restaurant, wa_id, reply)

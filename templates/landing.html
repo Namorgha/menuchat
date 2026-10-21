@@ -95,8 +95,8 @@
       const r = await post("/demo/send/", new URLSearchParams({ text }));
       const d = await r.json();
       typing.remove();
-      bubble("assistant", d.reply || d.error || "Something went wrong.");
-      lastCount += 2;
+      if (d.paused) { lastCount += 1; } // a person will answer; their reply arrives with the next refresh
+      else { bubble("assistant", d.reply || d.error || "Something went wrong."); lastCount += 2; }
     } catch { typing.remove(); bubble("assistant", "Network error — please try again."); }
     busy = false; input.focus();
   };

@@ -1,0 +1,8 @@
+{% for m in chat %}
+<div class="msg msg-{{ m.sender }}{% if not m.sent %} msg-failed{% endif %}">
+  <div class="msg-bubble">{{ m.text|linebreaksbr }}</div>
+  <div class="msg-meta">{{ m.get_sender_display }} · {{ m.created_at|date:"j M, H:i" }}{% if not m.sent %} · <b>not delivered</b>{% endif %}</div>
+</div>
+{% empty %}
+<p class="empty">No messages yet.</p>
+{% endfor %}

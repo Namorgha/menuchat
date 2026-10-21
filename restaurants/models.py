@@ -72,6 +72,10 @@ class Customer(models.Model):
     def channel(self) -> str:
         return "web" if self.external_id.startswith("web:") else "whatsapp"
 
+    @property
+    def phone(self) -> str:
+        return f"+{self.external_id}" if self.channel == "whatsapp" else ""
+
     def __str__(self):
         return self.name or self.external_id
 

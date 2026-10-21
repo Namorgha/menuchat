@@ -11,7 +11,7 @@ from django.test import TestCase, override_settings
 
 from restaurants.models import Customer, MenuItem, Order, Restaurant
 
-from . import ordering
+from . import handover, ordering
 from .engine import TOOLS, OpenAIChatModel, handle_message, retry_delay
 from .models import Conversation, Message, ProcessedMessage
 
@@ -292,6 +292,20 @@ class WebhookTests(TestCase):
         send.assert_called_once_with(self.r, "212644444444", "Ahlan Karim!")
         self.assertEqual(ProcessedMessage.objects.count(), 1)
 
+    def test_no_bot_reply_while_staff_have_taken_over(self):
+        convo = convo_for(self.r, "212644444444")
+        handover.take_over(convo)
+        with mock.patch("whatsapp.views.handle_message", wraps=handle_message) as handle, \
+             mock.patch("whatsapp.views.send_text") as send:
+            self.post(self.payload("wamid.p1", "is my order late?"))
+            self.post({**self.payload("wamid.p2"), "entry": [{"changes": [{"value": {
+                "metadata": {"phone_number_id": "PNID1"},
+                "messages": [{"id": "wamid.p2", "from": "212644444444", "type": "image"}],
+            }}]}]})
+        handle.assert_called_once()
+        send.assert_not_called()
+        self.assertEqual(list(convo.messages.values_list("text", flat=True)), ["is my order late?", "[image message]"])
+
     def test_non_text_messages_get_a_polite_reply(self):
         data = self.payload()
         data["entry"][0]["changes"][0]["value"]["messages"][0] = {"id": "wamid.2", "from": "212644444444", "type": "audio"}
@@ -299,6 +313,52 @@ class WebhookTests(TestCase):
             self.post(data)
         handle.assert_not_called()
         self.assertIn("text", send.call_args.args[2])
+
+
+class TakeoverTests(TestCase):
+    def setUp(self):
+        self.r, _, _ = make_restaurant(whatsapp_phone_number_id="PNID1")
+
+    def test_taken_over_conversation_saves_messages_without_calling_the_bot(self):
+        convo = convo_for(self.r)
+        handover.take_over(convo)
+        model = FakeModel()  # would fail if called
+        self.assertIsNone(handle_message(self.r, "2126000000", "Sara", "Can I change my order?", model=model))
+        self.assertEqual(model.calls, [])
+        convo.refresh_from_db()
+        self.assertEqual(convo.messages.get().text, "Can I change my order?")
+        self.assertTrue(convo.in_service_window())
+
+    def test_hand_back_lets_the_bot_answer_again(self):
+        convo = convo_for(self.r)
+        handover.take_over(convo)
+        handover.hand_back(convo)
+        reply = handle_message(self.r, "2126000000", "Sara", "salam", model=FakeModel({"content": "Salam!"}))
+        self.assertEqual(reply, "Salam!")
+
+    def test_staff_reply_goes_out_on_whatsapp_only_while_taken_over(self):
+        convo = convo_for(self.r)
+        handle_message(self.r, "2126000000", "Sara", "hello", model=FakeModel({"content": "Hi!"}))
+        convo.refresh_from_db()
+        with self.assertRaisesMessage(handover.HandoverError, "Take over"):
+            handover.send_staff_reply(convo, "Hi from the kitchen")
+        handover.take_over(convo)
+        with mock.patch("whatsapp.client.send_text", return_value=True) as send:
+            message = handover.send_staff_reply(convo, "Hi from the kitchen")
+        send.assert_called_once_with(self.r, "2126000000", "Hi from the kitchen")
+        self.assertEqual((message.sender, message.sent), ("staff", True))
+        convo.refresh_from_db()
+        self.assertEqual(convo.history[-1], {"role": "assistant", "content": "Hi from the kitchen", "ts": mock.ANY})
+
+    def test_failed_staff_reply_is_kept_and_marked(self):
+        convo = convo_for(self.r)
+        handle_message(self.r, "2126000000", "Sara", "hello", model=FakeModel({"content": "Hi!"}))
+        convo.refresh_from_db()
+        handover.take_over(convo)
+        with mock.patch("whatsapp.client.send_text", return_value=False):
+            with self.assertRaises(handover.HandoverError):
+                handover.send_staff_reply(convo, "Are you there?")
+        self.assertFalse(convo.messages.last().sent)
 
 
 class DeploySetupTests(TestCase):
@@ -339,12 +399,22 @@ class DeploySetupTests(TestCase):
 
 
 class DemoChatTests(TestCase):
+    @override_settings(DEMO_RESTAURANT_SLUG="test")
+    def test_demo_chat_stays_quiet_while_staff_answer(self):
+        make_restaurant()
+        self.client.get("/demo/messages/")
+        convo = Conversation.objects.get()
+        handover.take_over(convo)
+        response = self.client.post("/demo/send/", {"text": "hello?"})
+        self.assertEqual(response.json(), {"reply": None, "paused": True})
+        self.assertEqual(convo.messages.get().text, "hello?")
+
     @override_settings(DEMO_RESTAURANT_SLUG="test", DEMO_MESSAGES_PER_SESSION=2)
     def test_demo_chat_uses_session_customer_and_rate_limits(self):
         make_restaurant()
         self.client.get("/")
         with mock.patch("dashboard.views.handle_message", return_value="Salam!") as handle:
             for _ in range(2):
-                self.assertEqual(self.client.post("/demo/send/", {"text": "hi"}).json(), {"reply": "Salam!"})
+                self.assertEqual(self.client.post("/demo/send/", {"text": "hi"}).json(), {"reply": "Salam!", "paused": False})
             self.assertEqual(self.client.post("/demo/send/", {"text": "hi"}).status_code, 429)
         self.assertTrue(handle.call_args.args[1].startswith("web:"))

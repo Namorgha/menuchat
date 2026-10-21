@@ -215,17 +215,31 @@ def _run_tool(convo: Conversation, name: str, raw_args: str):
         return {"error": str(e)}, None
 
 
-def handle_message(restaurant: Restaurant, external_id: str, name: str, text: str, model: ChatModel | None = None) -> str:
-    """Process one inbound message and return the reply to send."""
-    customer, created = Customer.objects.get_or_create(
+def conversation_for(restaurant: Restaurant, external_id: str, name: str = "") -> Conversation:
+    customer, _ = Customer.objects.get_or_create(
         restaurant=restaurant, external_id=external_id, defaults={"name": name[:120]}
     )
     if name and customer.name != name[:120]:
         customer.name = name[:120]
         customer.save(update_fields=["name"])
     convo, _ = Conversation.objects.get_or_create(customer=customer)
+    return convo
+
+
+def record_customer_message(convo: Conversation, text: str) -> None:
     convo.add_message("user", text[:2000])
     convo.save(update_fields=["history", "last_customer_message_at", "updated_at"])
+
+
+def handle_message(
+    restaurant: Restaurant, external_id: str, name: str, text: str, model: ChatModel | None = None
+) -> str | None:
+    """Process one inbound message and return the reply to send, or None while staff have taken over."""
+    convo = conversation_for(restaurant, external_id, name)
+    customer = convo.customer
+    record_customer_message(convo, text)
+    if convo.bot_paused:
+        return None  # a person is answering this customer; the message waits in the portal inbox
 
     model = model or OpenAIChatModel()
     messages = [{"role": "system", "content": system_prompt(restaurant, customer, convo)}] + [

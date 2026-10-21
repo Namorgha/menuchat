@@ -1,0 +1,42 @@
+{% extends "portal/base.html" %}
+{% block title %}Inbox{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Inbox</h1>
+    <p class="muted">Every conversation with your customers. Take over to answer yourself.</p>
+  </div>
+</div>
+
+{% if page_obj.object_list %}
+<ul class="inbox">
+  {% for convo in page_obj %}
+  <li>
+    <a class="inbox-row" href="{% url 'portal:conversation' convo.pk %}">
+      <span class="avatar" aria-hidden="true">{{ convo.customer.name|default:"?"|first|upper }}</span>
+      <span class="inbox-main">
+        <span class="inbox-top">
+          <b>{{ convo.customer.name|default:"Customer" }}</b>
+          <time datetime="{{ convo.last_at|date:'c' }}">{{ convo.last_at|date:"j M, H:i" }}</time>
+        </span>
+        <span class="inbox-meta">
+          {% if convo.customer.phone %}{{ convo.customer.phone }}{% else %}Web demo{% endif %}
+          {% if convo.bot_paused %}<span class="tag tag-staff">Staff answering</span>{% endif %}
+        </span>
+        <span class="inbox-last">{% if convo.last_sender != "customer" %}<span class="muted">{% if convo.last_sender == "bot" %}Bot{% else %}You{% endif %}:</span> {% endif %}{{ convo.last_text|truncatechars:90 }}</span>
+      </span>
+    </a>
+  </li>
+  {% endfor %}
+</ul>
+{% if page_obj.paginator.num_pages > 1 %}
+<nav class="pager" aria-label="Pages">
+  {% if page_obj.has_previous %}<a class="btn btn-sm" href="?page={{ page_obj.previous_page_number }}">← Newer</a>{% else %}<span></span>{% endif %}
+  <span class="muted">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>
+  {% if page_obj.has_next %}<a class="btn btn-sm" href="?page={{ page_obj.next_page_number }}">Older →</a>{% else %}<span></span>{% endif %}
+</nav>
+{% endif %}
+{% else %}
+<div class="empty-state">No conversations yet. They'll appear here as soon as a customer writes.</div>
+{% endif %}
+{% endblock %}

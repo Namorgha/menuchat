@@ -54,7 +54,7 @@ def demo_send(request):
     request.session["demo_count"] = count + 1
     customer = _demo_customer(request, restaurant)
     reply = handle_message(restaurant, customer.external_id, customer.name, text)
-    return JsonResponse({"reply": reply})
+    return JsonResponse({"reply": reply, "paused": reply is None})  # paused: staff will answer from the inbox
 
 
 @require_POST
