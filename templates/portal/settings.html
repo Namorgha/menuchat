@@ -1,0 +1,38 @@
+{% extends "portal/base.html" %}
+{% block title %}Settings{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Settings</h1>
+    <p class="muted">What customers and the assistant see about your restaurant.</p>
+  </div>
+</div>
+
+<form method="post" class="form panel" novalidate>
+  {% csrf_token %}
+  {% if form.non_field_errors %}<div class="form-errors" role="alert">{% for e in form.non_field_errors %}<p>{{ e }}</p>{% endfor %}</div>{% endif %}
+
+  <fieldset class="fieldset">
+    <legend>Restaurant</legend>
+    {% include "portal/_field.html" with field=form.name %}
+    {% include "portal/_field.html" with field=form.description %}
+    {% include "portal/_field.html" with field=form.opening_hours %}
+    {% include "portal/_field.html" with field=form.is_open %}
+  </fieldset>
+
+  <fieldset class="fieldset">
+    <legend>Ordering</legend>
+    <div class="form-grid cols-3">
+      {% include "portal/_field.html" with field=form.currency %}
+      {% include "portal/_field.html" with field=form.delivery_fee %}
+      {% include "portal/_field.html" with field=form.minimum_order %}
+    </div>
+    {% include "portal/_field.html" with field=form.accepts_delivery %}
+    {% include "portal/_field.html" with field=form.accepts_pickup %}
+  </fieldset>
+
+  <div class="form-actions">
+    <button class="btn btn-primary">Save settings</button>
+  </div>
+</form>
+{% endblock %}

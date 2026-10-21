@@ -14,7 +14,7 @@ from django.views.decorators.http import require_GET, require_POST
 
 from restaurants.models import MenuCategory, MenuItem, Order, Restaurant
 
-from .forms import CategoryForm, MenuItemForm
+from .forms import CategoryForm, MenuItemForm, RestaurantSettingsForm
 
 SESSION_KEY = "portal_restaurant"
 
@@ -349,3 +349,17 @@ def item_availability(request, pk):
         return JsonResponse({"on": item.is_available, "label": label})
     messages.success(request, f"“{item.name}”: {label.lower()}.")
     return redirect(f"{reverse('portal:menu')}#item-{item.pk}")
+
+
+# ---------- Settings ----------
+
+@portal_view
+def restaurant_settings(request):
+    form = RestaurantSettingsForm(request.POST or None, instance=request.restaurant)
+    if request.method == "POST":
+        if form.is_valid():
+            form.save()
+            messages.success(request, "Settings saved.")
+            return redirect("portal:settings")
+        request.restaurant.refresh_from_db()  # keep the header showing saved values, not the rejected ones
+    return page(request, "portal/settings.html", "settings", {"form": form})

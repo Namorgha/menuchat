@@ -22,4 +22,5 @@ urlpatterns = [
     path("menu/items/<int:pk>/delete/", views.item_delete, name="item_delete"),
     path("menu/items/<int:pk>/move/", views.item_move, name="item_move"),
     path("menu/items/<int:pk>/availability/", views.item_availability, name="item_availability"),
+    path("settings/", views.restaurant_settings, name="settings"),
 ]

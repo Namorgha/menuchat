@@ -322,3 +322,45 @@ class MenuTests(PortalTestCase):
         self.b_item.refresh_from_db()
         self.b_cat.refresh_from_db()
         self.assertEqual((self.b_item.name, self.b_item.is_available, self.b_cat.name), ("B secret dish", True, "B secret category"))
+
+
+class SettingsTests(PortalTestCase):
+    def data(self, **overrides):
+        data = {
+            "name": "Restaurant A+", "description": "Fresh food", "opening_hours": "12:00–23:00", "currency": "eur",
+            "delivery_fee": "12.50", "minimum_order": "30", "accepts_delivery": "on", "accepts_pickup": "on",
+        }
+        data.update(overrides)
+        return data
+
+    def test_settings_save(self):
+        self.client.force_login(self.chef)
+        response = self.client.post("/portal/settings/", self.data(), follow=True)
+        self.assertRedirects(response, "/portal/settings/")
+        self.assertContains(response, "Settings saved.")
+        self.a.refresh_from_db()
+        self.assertEqual(
+            (self.a.name, self.a.description, self.a.opening_hours, self.a.currency, self.a.delivery_fee, self.a.minimum_order),
+            ("Restaurant A+", "Fresh food", "12:00–23:00", "EUR", Decimal("12.50"), Decimal("30")),
+        )
+        self.assertFalse(self.a.is_open)  # unchecked box closes the restaurant
+        self.assertTrue(self.a.accepts_delivery and self.a.accepts_pickup)
+
+    def test_invalid_settings_show_errors_and_change_nothing(self):
+        self.client.force_login(self.chef)
+        response = self.client.post("/portal/settings/", self.data(name="", delivery_fee="-1"))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(set(response.context["form"].errors), {"name", "delivery_fee"})
+        self.assertContains(response, "Can&#x27;t be negative.")
+        response = self.client.post("/portal/settings/", self.data(accepts_delivery="", accepts_pickup=""))
+        self.assertContains(response, "Offer at least delivery or pickup")
+        self.a.refresh_from_db()
+        self.assertEqual(self.a.name, "Restaurant A")
+
+    def test_settings_only_edit_your_own_restaurant(self):
+        self.client.force_login(self.other)
+        self.assertEqual(self.client.get("/portal/settings/").context["form"].instance, self.b)
+        self.client.post("/portal/settings/", self.data(name="Renamed"))
+        self.a.refresh_from_db()
+        self.b.refresh_from_db()
+        self.assertEqual((self.a.name, self.b.name), ("Restaurant A", "Renamed"))
