@@ -11,12 +11,17 @@ Let restaurant customers order food on WhatsApp. An AI assistant answers in **Da
 - **Server-side pricing** — the AI never produces prices or totals; every number comes from the database
 - **Order rules enforced in code** — opening state, minimum order, delivery address, sold-out items
 - **Restaurant portal** — a mobile-first back office for restaurant staff (Django admin stays for the platform owner):
-  - **Orders** — live board (Incoming → In the kitchen → On the way → Done) with one-tap status changes, plus a paginated history with status filter and search by order number or customer
+  - **Orders** — live board (Incoming → In the kitchen → On the way → Done) with one-tap status changes and a chime + flashing tab for new orders, plus a paginated history with status filter and search by order number or customer
+  - **Inbox** — every conversation with the full chat; **Take over** pauses the bot for that customer so staff can reply from the portal (sent on WhatsApp), **Hand back to bot** resumes it
   - **Menu** — add, edit, delete and reorder categories and items, prices, descriptions and photos; a sold-out switch that applies instantly
-  - **Settings** — name, description, opening hours, currency, delivery fee, minimum order, delivery/pickup
+  - **Settings** — name, description, opening hours, currency, delivery fee, minimum order, delivery/pickup, new-order alert number, and **delivery zones** (neighbourhoods with their own fee)
   - **Open/closed switch** in the header on every page; validated forms with inline errors
   - **"Try the demo"** one-click sign-in to the demo restaurant (optional, `DEMO_LOGIN_ENABLED=true`); the demo account is read-only for the menu and settings but can move orders
-- **Automatic customer updates** — each status change sends a WhatsApp message (or appears in the web demo chat)
+- **Delivery zones** — the bot asks for the neighbourhood, matches it to a zone (typos and accents tolerated), charges that zone's fee server-side and refuses delivery elsewhere; with no zones, a flat fee applies
+- **Cash on delivery** — shown in the bot's confirmation, on the order card and in the alert
+- **New-order alerts** — a WhatsApp message to the restaurant's alert number with the order number, items, total and address
+- **Owner replies from the WhatsApp Business app** (Coexistence) are saved to the conversation and pause the bot for that customer for 30 minutes
+- **Automatic customer updates** — each status change sends a WhatsApp message (or appears in the web demo chat), only within WhatsApp's 24-hour customer service window; outside it the update is skipped, logged and marked in the inbox
 - **Multi-restaurant** — one server, many restaurants; incoming messages are routed by WhatsApp phone number ID, and staff only see and edit their own restaurants
 - **Web demo chat** — try the full flow without WhatsApp, rate-limited per session
 
@@ -95,9 +100,10 @@ Menu photos are stored in **Vercel Blob** when `BLOB_READ_WRITE_TOKEN` is set (V
 ## Connect WhatsApp
 
 1. In Meta for Developers, create an app and add **WhatsApp**.
-2. Set the webhook URL to `https://<your-domain>/webhooks/whatsapp/`, use your `WHATSAPP_VERIFY_TOKEN`, and subscribe to **messages**.
+2. Set the webhook URL to `https://<your-domain>/webhooks/whatsapp/`, use your `WHATSAPP_VERIFY_TOKEN`, and subscribe to **messages** (and **smb_message_echoes** if the number also uses the WhatsApp Business app via Coexistence).
 3. Put the app secret in `WHATSAPP_APP_SECRET` and a permanent access token in `WHATSAPP_ACCESS_TOKEN`.
 4. In the admin, set the restaurant's **WhatsApp phone number ID**, and add the owner's user to its **staff** so they can sign in to the portal.
+5. Optional: in the portal settings, set the **alert number** (a different WhatsApp number from the restaurant's). WhatsApp delivers free-form messages only within 24 hours of that number messaging the restaurant, so for reliable alerts create a *utility* template with four body variables (order number, items, total and payment, delivery or pickup), get it approved, and set `WHATSAPP_ALERT_TEMPLATE` (and `WHATSAPP_ALERT_TEMPLATE_LANGUAGE`).
 
 ## Tests
 
@@ -105,7 +111,7 @@ Menu photos are stored in **Vercel Blob** when `BLOB_READ_WRITE_TOKEN` is set (V
 python manage.py test
 ```
 
-The tests cover pricing and order rules, the AI tool loop (with a scripted fake model), webhook signature checks, routing and duplicate handling, demo rate limiting, and the portal: permissions (staff of one restaurant can't see or edit another's orders, menu or settings), status transitions, order history, menu CRUD and validation, photo storage (Vercel Blob and upload failures), settings, demo login and demo read-only mode.
+The tests cover pricing and order rules, the AI tool loop (with a scripted fake model), webhook signature checks, routing and duplicate handling, demo rate limiting, take over and owner-reply pauses, delivery zone matching and pricing, new-order alerts, the 24-hour rule, and the portal: permissions (staff of one restaurant can't see or edit another's orders, menu or settings), status transitions, order history, inbox, menu CRUD and validation, photo storage (Vercel Blob and upload failures), settings and delivery zones, demo login and demo read-only mode.
 
 ## What's next
 
