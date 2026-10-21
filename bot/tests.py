@@ -13,7 +13,7 @@ from restaurants.models import Customer, MenuItem, Order, Restaurant
 
 from . import ordering
 from .engine import TOOLS, OpenAIChatModel, handle_message, retry_delay
-from .models import Conversation, ProcessedMessage
+from .models import Conversation, Message, ProcessedMessage
 
 
 def make_restaurant(**kw):
@@ -136,6 +136,16 @@ class EngineTests(TestCase):
         # the model saw each tool result
         self.assertEqual(model.calls[-1][-1]["role"], "tool")
         self.assertTrue(json.loads(model.calls[-1][-1]["content"])["placed"])
+
+    def test_every_message_is_logged_in_full_and_opens_the_service_window(self):
+        model = FakeModel(*[{"content": "Salam!"}] * 20)
+        for n in range(20):
+            handle_message(self.r, "2126", "Sara", f"message {n}", model=model)
+        convo = Conversation.objects.get()
+        self.assertEqual(len(convo.history), Conversation.HISTORY_LIMIT)  # trimmed for the AI
+        self.assertEqual(convo.messages.count(), 40)  # kept in full for the inbox
+        self.assertEqual(list(convo.messages.values_list("sender", flat=True)[:2]), ["customer", "bot"])
+        self.assertTrue(convo.in_service_window())
 
     def test_tool_errors_are_returned_to_the_model_not_raised(self):
         model = FakeModel(

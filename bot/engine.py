@@ -225,7 +225,7 @@ def handle_message(restaurant: Restaurant, external_id: str, name: str, text: st
         customer.save(update_fields=["name"])
     convo, _ = Conversation.objects.get_or_create(customer=customer)
     convo.add_message("user", text[:2000])
-    convo.save(update_fields=["history", "updated_at"])
+    convo.save(update_fields=["history", "last_customer_message_at", "updated_at"])
 
     model = model or OpenAIChatModel()
     messages = [{"role": "system", "content": system_prompt(restaurant, customer, convo)}] + [
