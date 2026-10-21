@@ -11,7 +11,7 @@ from django.core.management import CommandError, call_command
 from django.test import TestCase, override_settings
 from django.utils import timezone
 
-from restaurants.models import Customer, MenuItem, Order, Restaurant
+from restaurants.models import Customer, DeliveryZone, MenuItem, Order, Restaurant
 
 from . import handover, ordering
 from .engine import TOOLS, OpenAIChatModel, handle_message, retry_delay
@@ -349,6 +349,66 @@ class WebhookTests(TestCase):
             self.post(data)
         handle.assert_not_called()
         self.assertIn("text", send.call_args.args[2])
+
+
+class DeliveryZoneTests(TestCase):
+    def setUp(self):
+        self.r, self.tagine, _ = make_restaurant()  # flat fee 10, minimum 40
+        DeliveryZone.objects.create(restaurant=self.r, name="Malabata", fee=Decimal("15"))
+        DeliveryZone.objects.create(restaurant=self.r, name="Hay Al Fath", fee=Decimal("25"))
+        DeliveryZone.objects.create(restaurant=self.r, name="Marshan", fee=Decimal("5"), active=False)
+        self.convo = convo_for(self.r)
+        ordering.add_to_cart(self.convo, self.tagine.id)
+
+    def test_fuzzy_zone_matching(self):
+        for text, expected in [("Malabata", "Malabata"), ("malabta", "Malabata"), ("près de MALABATA, rue 4", "Malabata"),
+                               ("hay al-fath", "Hay Al Fath"), ("Hay el Fath", "Hay Al Fath"),
+                               ("Marshan", None), ("Boukhalef", None), ("", None)]:
+            zone = ordering.match_zone(self.r, text)
+            self.assertEqual(zone.name if zone else None, expected, text)
+
+    def test_zone_fee_is_charged_server_side(self):
+        summary = ordering.set_fulfillment(self.convo, "delivery", "12 Rue Ibn Khaldoun", "malabta")
+        self.assertEqual((summary["delivery_zone"], summary["delivery_fee"], summary["total"]), ("Malabata", "15.00 MAD", "80.00 MAD"))
+        order = ordering.place_order(self.convo)
+        self.assertEqual((order.delivery_fee, order.total, order.delivery_zone), (Decimal("15"), Decimal("80"), "Malabata"))
+
+    def test_neighbourhood_can_come_from_the_address(self):
+        ordering.set_fulfillment(self.convo, "delivery", "Rue 7, Hay Al Fath, Tanger")
+        self.assertEqual(ordering.place_order(self.convo).delivery_fee, Decimal("25"))
+
+    def test_delivery_outside_the_zones_is_refused(self):
+        with self.assertRaisesMessage(ordering.OrderingError, "We don't deliver to “Boukhalef”. We deliver to: Hay Al Fath (25.00 MAD), Malabata (15.00 MAD). Pickup is available."):
+            ordering.set_fulfillment(self.convo, "delivery", "Villa 3, Boukhalef", "Boukhalef")
+        with self.assertRaisesMessage(ordering.OrderingError, "Ask which neighbourhood"):
+            ordering.place_order(self.convo)
+        self.assertFalse(Order.objects.exists())
+
+    def test_order_needs_a_neighbourhood_and_a_still_active_zone(self):
+        ordering.set_fulfillment(self.convo, "delivery", "")
+        self.assertIn("depends on the neighbourhood", ordering.cart_summary(self.convo)["delivery_fee"])
+        ordering.set_fulfillment(self.convo, "delivery", "12 Rue X", "Malabata")
+        DeliveryZone.objects.filter(name="Malabata").update(active=False)
+        self.convo.refresh_from_db()
+        with self.assertRaises(ordering.OrderingError):
+            ordering.place_order(self.convo)
+
+    def test_flat_fee_when_there_are_no_zones(self):
+        DeliveryZone.objects.all().delete()
+        ordering.set_fulfillment(self.convo, "delivery", "Anywhere in town 5", "Boukhalef")
+        order = ordering.place_order(self.convo)
+        self.assertEqual((order.delivery_fee, order.delivery_zone), (Decimal("10"), ""))
+
+    def test_bot_is_told_the_zones_and_passes_the_neighbourhood(self):
+        model = FakeModel(
+            {"content": None, "tool_calls": [tool("set_fulfillment", method="delivery", address="12 Rue X", neighbourhood="Malabata")]},
+            {"content": "Delivery to Malabata is 15 MAD.", "tool_calls": []},
+        )
+        handle_message(self.r, "2126000000", "Sara", "deliver to Malabata", model=model)
+        prompt = model.calls[0][0]["content"]
+        self.assertIn("Delivery only to these neighbourhoods (fee): Hay Al Fath (25.00 MAD), Malabata (15.00 MAD)", prompt)
+        self.assertNotIn("Marshan", prompt)
+        self.assertEqual(json.loads(model.calls[1][-1]["content"])["delivery_fee"], "15.00 MAD")
 
 
 class TakeoverTests(TestCase):

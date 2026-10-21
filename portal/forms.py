@@ -3,7 +3,7 @@ from decimal import Decimal
 from django import forms
 from django.conf import settings
 
-from restaurants.models import MenuCategory, MenuItem, Restaurant
+from restaurants.models import DeliveryZone, MenuCategory, MenuItem, Restaurant
 
 MAX_IMAGE_BYTES = 4 * 1024 * 1024  # Vercel rejects request bodies over 4.5 MB
 
@@ -54,6 +54,47 @@ class MenuItemForm(forms.ModelForm):
         if image and getattr(image, "size", 0) > MAX_IMAGE_BYTES:
             raise forms.ValidationError("That photo is too large (max 4 MB).")
         return image
+
+
+class DeliveryZoneForm(forms.ModelForm):
+    class Meta:
+        model = DeliveryZone
+        fields = ["name", "fee", "active"]
+        widgets = {"name": forms.TextInput(attrs={"placeholder": "e.g. Malabata"})}
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["fee"].widget.attrs.update(min="0", step="0.01", inputmode="decimal")
+
+    def clean_name(self):
+        name = " ".join(self.cleaned_data["name"].split())
+        if not name:
+            raise forms.ValidationError("Give the zone a name.")
+        return name
+
+    def clean_fee(self):
+        fee = self.cleaned_data["fee"]
+        if fee is not None and fee < 0:
+            raise forms.ValidationError("Can't be negative.")
+        return fee
+
+
+class BaseZoneFormSet(forms.BaseModelFormSet):
+    def clean(self):
+        super().clean()
+        seen = set()
+        for form in self.forms:
+            if not form.has_changed() and not form.instance.pk or self.can_delete and self._should_delete_form(form):
+                continue
+            name = (form.cleaned_data.get("name") or "").lower()
+            if name in seen:
+                form.add_error("name", "You already have a zone with this name.")
+            seen.add(name)
+
+
+ZoneFormSet = forms.modelformset_factory(
+    DeliveryZone, form=DeliveryZoneForm, formset=BaseZoneFormSet, extra=1, can_delete=True
+)
 
 
 class RestaurantSettingsForm(forms.ModelForm):

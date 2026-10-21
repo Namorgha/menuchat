@@ -11,7 +11,9 @@ class Restaurant(models.Model):
     description = models.CharField(max_length=255, blank=True, help_text="One line the bot uses to introduce you.")
     currency = models.CharField(max_length=8, default="MAD")
     opening_hours = models.CharField(max_length=255, blank=True, help_text="e.g. Every day 12:00–23:30")
-    delivery_fee = models.DecimalField(max_digits=8, decimal_places=2, default=Decimal("0"))
+    delivery_fee = models.DecimalField(
+        max_digits=8, decimal_places=2, default=Decimal("0"), help_text="Used when you have no delivery zones."
+    )
     minimum_order = models.DecimalField(max_digits=8, decimal_places=2, default=Decimal("0"))
     accepts_delivery = models.BooleanField(default=True)
     accepts_pickup = models.BooleanField(default=True)
@@ -26,6 +28,20 @@ class Restaurant(models.Model):
 
     def __str__(self):
         return self.name
+
+
+class DeliveryZone(models.Model):
+    """A neighbourhood the restaurant delivers to, with its own fee. With no zones, the flat delivery fee applies."""
+    restaurant = models.ForeignKey(Restaurant, on_delete=models.CASCADE, related_name="zones")
+    name = models.CharField(max_length=80, help_text="Neighbourhood name as customers say it, e.g. Malabata.")
+    fee = models.DecimalField(max_digits=8, decimal_places=2, default=Decimal("0"))
+    active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["name", "id"]
+
+    def __str__(self):
+        return f"{self.name} ({self.fee})"
 
 
 class MenuCategory(models.Model):
@@ -103,6 +119,7 @@ class Order(models.Model):
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.NEW)
     fulfillment = models.CharField(max_length=10, choices=Fulfillment.choices, default=Fulfillment.DELIVERY)
     delivery_address = models.CharField(max_length=255, blank=True)
+    delivery_zone = models.CharField(max_length=80, blank=True)  # snapshot of the zone's name
     notes = models.CharField(max_length=255, blank=True)
     payment_method = models.CharField(max_length=10, choices=Payment.choices, default=Payment.CASH)
     subtotal = models.DecimalField(max_digits=10, decimal_places=2)

@@ -9,7 +9,7 @@
 </div>
 
 <form method="post" class="form panel" novalidate>
-  {% csrf_token %}
+  {% csrf_token %}<input type="hidden" name="section" value="settings">
   <fieldset class="plain form" {% if read_only %}disabled{% endif %}>
   {% if form.non_field_errors %}<div class="form-errors" role="alert">{% for e in form.non_field_errors %}<p>{{ e }}</p>{% endfor %}</div>{% endif %}
 
@@ -35,6 +35,36 @@
   <div class="form-actions">
     <button class="btn btn-primary">Save settings</button>
   </div>
+  </fieldset>
+</form>
+<form method="post" class="form panel zones-panel" id="zones" novalidate>
+  {% csrf_token %}<input type="hidden" name="section" value="zones">
+  {{ zones.management_form }}
+  <fieldset class="plain form" {% if read_only %}disabled{% endif %}>
+    <div>
+      <h2 class="panel-title">Delivery zones</h2>
+      <p class="muted panel-help">Neighbourhoods you deliver to, each with its own fee. The assistant asks for the neighbourhood, charges that zone's fee and refuses delivery anywhere else. With no zones, the flat delivery fee above applies everywhere.</p>
+    </div>
+    {% if zones.non_form_errors %}<div class="form-errors" role="alert">{% for e in zones.non_form_errors %}<p>{{ e }}</p>{% endfor %}</div>{% endif %}
+    <div class="zones">
+      <div class="zone-row zone-head" aria-hidden="true"><span>Neighbourhood</span><span>Fee ({{ restaurant.currency }})</span><span>Active</span><span>Remove</span></div>
+      {% for zf in zones %}
+      <div class="zone-row{% if zf.errors %} has-error{% endif %}">
+        {% for hidden in zf.hidden_fields %}{{ hidden }}{% endfor %}
+        <div class="field">
+          <label class="sr-only" for="{{ zf.name.id_for_label }}">Neighbourhood</label>{{ zf.name }}
+          {% for e in zf.name.errors %}<small class="error">{{ e }}</small>{% endfor %}
+        </div>
+        <div class="field">
+          <label class="sr-only" for="{{ zf.fee.id_for_label }}">Fee</label>{{ zf.fee }}
+          {% for e in zf.fee.errors %}<small class="error">{{ e }}</small>{% endfor %}
+        </div>
+        <label class="zone-check"><input type="checkbox" name="{{ zf.active.html_name }}" {% if zf.active.value %}checked{% endif %}> <span>Active</span></label>
+        {% if zf.instance.pk %}<label class="zone-check"><input type="checkbox" name="{{ zf.DELETE.html_name }}"> <span>Remove</span></label>{% else %}<span class="muted zone-new">New</span>{% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    <div class="form-actions"><button class="btn btn-primary">Save zones</button></div>
   </fieldset>
 </form>
 {% endblock %}

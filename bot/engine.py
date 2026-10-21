@@ -60,12 +60,13 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "set_fulfillment",
-            "description": "Set delivery or pickup. For delivery, include the full address the customer gave.",
+            "description": "Set delivery or pickup. For delivery, include the full address and the neighbourhood the customer gave.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "method": {"type": "string", "enum": ["delivery", "pickup"]},
                     "address": {"type": "string"},
+                    "neighbourhood": {"type": "string", "description": "Neighbourhood / area, used for the delivery fee."},
                 },
                 "required": ["method"],
             },
@@ -105,12 +106,23 @@ def menu_text(restaurant: Restaurant) -> str:
     return "\n".join(lines) or "(the menu is empty)"
 
 
+def delivery_text(restaurant: Restaurant) -> str:
+    zones = ordering.active_zones(restaurant)
+    if not zones:
+        return f"Delivery fee: {restaurant.delivery_fee} {restaurant.currency}."
+    areas = ", ".join(f"{z.name} ({z.fee} {restaurant.currency})" for z in zones)
+    return (
+        f"Delivery only to these neighbourhoods (fee): {areas}. For delivery, ask for the neighbourhood and pass it "
+        "to set_fulfillment; the fee depends on it. Elsewhere there's no delivery."
+    )
+
+
 def system_prompt(restaurant: Restaurant, customer: Customer, convo: Conversation) -> str:
     services = [s for s, ok in (("delivery", restaurant.accepts_delivery), ("pickup", restaurant.accepts_pickup)) if ok]
     return f"""You are the WhatsApp ordering assistant for {restaurant.name}. {restaurant.description}
 Customer name: {customer.name or "unknown"}.
 Opening hours: {restaurant.opening_hours or "not specified"}. Currently {"OPEN" if restaurant.is_open else "CLOSED — do not take orders"}.
-Services: {", ".join(services)}. Payment: cash on delivery (or cash at pickup) only; there's no online or card payment. Delivery fee: {restaurant.delivery_fee} {restaurant.currency}. Minimum order: {restaurant.minimum_order} {restaurant.currency}.
+Services: {", ".join(services)}. Payment: cash on delivery (or cash at pickup) only; there's no online or card payment. {delivery_text(restaurant)} Minimum order: {restaurant.minimum_order} {restaurant.currency}.
 
 Current menu (use these ids with the tools; SOLD OUT items cannot be ordered):
 {menu_text(restaurant)}
@@ -204,7 +216,9 @@ def _run_tool(convo: Conversation, name: str, raw_args: str):
         if name == "view_cart":
             return ordering.cart_summary(convo), None
         if name == "set_fulfillment":
-            return ordering.set_fulfillment(convo, args.get("method", ""), args.get("address", "")), None
+            return ordering.set_fulfillment(
+                convo, args.get("method", ""), args.get("address", ""), args.get("neighbourhood", "")
+            ), None
         if name == "place_order":
             order = ordering.place_order(convo, args.get("notes", ""))
             return {
@@ -278,7 +292,7 @@ def handle_message(
         reply = "Sorry, I'm having trouble right now. Please try again in a minute."
 
     reply = reply or "Sorry, I didn't catch that. Could you say it another way?"
-    convo.refresh_from_db(fields=["cart", "fulfillment", "delivery_address"])
+    convo.refresh_from_db(fields=["cart", "fulfillment", "delivery_address", "delivery_zone"])
     convo.add_message("assistant", reply)
     convo.save(update_fields=["history", "updated_at"])
     return reply

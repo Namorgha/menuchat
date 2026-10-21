@@ -13,6 +13,9 @@ class Conversation(models.Model):
     cart = models.JSONField(default=list, blank=True)  # [{"item_id": int, "quantity": int, "note": str}]
     fulfillment = models.CharField(max_length=10, blank=True)  # "delivery" | "pickup"
     delivery_address = models.CharField(max_length=255, blank=True)
+    delivery_zone = models.ForeignKey(
+        "restaurants.DeliveryZone", on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
     # Staff took over from the portal: the bot stays quiet until they hand back.
     taken_over = models.BooleanField(default=False)
     # The owner answered from the WhatsApp Business app: the bot stays quiet until then.

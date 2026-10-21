@@ -258,9 +258,19 @@ fieldset.plain { border: 0; margin: 0; padding: 0; min-width: 0; }
 .menu-cat .empty { padding: 16px; margin: 0; border-bottom: 1px solid var(--line); }
 .fieldset { border: 0; margin: 0; padding: 0; display: grid; gap: 16px; min-width: 0; }
 .fieldset + .fieldset { border-top: 1px solid var(--line); padding-top: 20px; }
-.fieldset legend { font-weight: 700; font-size: 16px; padding: 0; margin-bottom: 12px; }
+.fieldset legend { float: left; width: 100%; font-weight: 700; font-size: 16px; padding: 0; }
+.fieldset legend + * { clear: both; }
 .danger-link { color: var(--danger); font-size: 14px; font-weight: 600; margin-left: auto; }
 .wide-only { display: none; }
+.zones-panel { margin-top: 16px; }
+.panel-title { font-size: 17px; margin: 0 0 4px; }
+.panel-help { font-size: 14px; margin: 0; }
+.zones { display: grid; gap: 10px; }
+.zone-row { display: grid; grid-template-columns: minmax(0, 1fr) 96px; gap: 8px 10px; align-items: start; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
+.zone-head { display: none; }
+.zone-check { display: flex; align-items: center; gap: 8px; font-size: 14px; min-height: 28px; cursor: pointer; }
+.zone-check input { width: 18px; height: 18px; accent-color: var(--brand); }
+.zone-new { font-size: 13px; align-self: center; }
 .photo-preview { width: 120px; height: 120px; object-fit: cover; border-radius: 12px; border: 1px solid var(--line); }
 
 /* Inbox */
@@ -310,6 +320,9 @@ fieldset.plain { border: 0; margin: 0; padding: 0; min-width: 0; }
   .panel { padding: 24px; }
   .form-grid.cols-2 { grid-template-columns: 1fr 1fr; }
   .form-grid.cols-3 { grid-template-columns: 1fr 1fr 1fr; }
+  .zone-row { grid-template-columns: minmax(0, 1fr) 120px 80px 90px; align-items: center; }
+  .zone-head { display: grid; font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+  .zone-check span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   .menu-item { grid-template-columns: 56px minmax(0, 1fr) auto; align-items: center; }
   .menu-item .menu-actions { grid-column: auto; }
   .menu-item .menu-actions .spacer { display: none; }

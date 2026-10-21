@@ -1,10 +1,15 @@
 from django.contrib import admin
 
-from .models import Customer, MenuCategory, MenuItem, Order, OrderItem, Restaurant
+from .models import Customer, DeliveryZone, MenuCategory, MenuItem, Order, OrderItem, Restaurant
 
 
 class MenuCategoryInline(admin.TabularInline):
     model = MenuCategory
+    extra = 0
+
+
+class DeliveryZoneInline(admin.TabularInline):
+    model = DeliveryZone
     extra = 0
 
 
@@ -13,7 +18,7 @@ class RestaurantAdmin(admin.ModelAdmin):
     list_display = ("name", "slug", "is_open", "currency", "whatsapp_phone_number_id")
     prepopulated_fields = {"slug": ("name",)}
     filter_horizontal = ("staff",)
-    inlines = [MenuCategoryInline]
+    inlines = [MenuCategoryInline, DeliveryZoneInline]
     fieldsets = (
         (None, {"fields": ("name", "slug", "description", "opening_hours", "is_open")}),
         ("Ordering", {"fields": ("currency", "delivery_fee", "minimum_order", "accepts_delivery", "accepts_pickup")}),

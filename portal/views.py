@@ -19,7 +19,7 @@ from django.views.decorators.http import require_GET, require_POST
 from restaurants.models import MenuCategory, MenuItem, Order, Restaurant
 from restaurants.storage import PhotoUploadError
 
-from .forms import CategoryForm, MenuItemForm, RestaurantSettingsForm
+from .forms import CategoryForm, MenuItemForm, RestaurantSettingsForm, ZoneFormSet
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
@@ -196,7 +196,7 @@ def orders_data(request):
             "customer": o.customer.name or "Customer",
             "channel": o.customer.channel,
             "fulfillment": o.get_fulfillment_display(),
-            "address": o.delivery_address,
+            "address": f"{o.delivery_address} ({o.delivery_zone})" if o.delivery_zone else o.delivery_address,
             "notes": o.notes,
             "total": f"{o.total:.2f} {restaurant.currency}",
             "payment": o.payment_label,
@@ -435,11 +435,24 @@ def item_availability(request, pk):
 @portal_view
 @editable
 def restaurant_settings(request):
-    form = RestaurantSettingsForm(request.POST or None, instance=request.restaurant)
-    if request.method == "POST":
+    restaurant = request.restaurant
+    saving = request.POST.get("section") if request.method == "POST" else None
+    form = RestaurantSettingsForm(request.POST if saving == "settings" else None, instance=restaurant)
+    zones = ZoneFormSet(
+        request.POST if saving == "zones" else None, queryset=restaurant.zones.all(), prefix="zones"
+    )
+    if saving == "settings":
         if form.is_valid():
             form.save()
             messages.success(request, "Settings saved.")
             return redirect("portal:settings")
-        request.restaurant.refresh_from_db()  # keep the header showing saved values, not the rejected ones
-    return page(request, "portal/settings.html", "settings", {"form": form})
+        restaurant.refresh_from_db()  # keep the header showing saved values, not the rejected ones
+    elif saving == "zones" and zones.is_valid():
+        for zone in zones.save(commit=False):
+            zone.restaurant = restaurant
+            zone.save()
+        for zone in zones.deleted_objects:
+            zone.delete()
+        messages.success(request, "Delivery zones saved.")
+        return redirect(f"{reverse('portal:settings')}#zones")
+    return page(request, "portal/settings.html", "settings", {"form": form, "zones": zones})

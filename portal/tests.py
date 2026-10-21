@@ -14,7 +14,7 @@ from PIL import Image
 
 from bot import ordering
 from bot.models import Conversation
-from restaurants.models import Customer, MenuCategory, MenuItem, Order, Restaurant
+from restaurants.models import Customer, DeliveryZone, MenuCategory, MenuItem, Order, Restaurant
 from restaurants.storage import VercelBlobStorage
 
 User = get_user_model()
@@ -334,6 +334,7 @@ class MenuTests(PortalTestCase):
 class SettingsTests(PortalTestCase):
     def data(self, **overrides):
         data = {
+            "section": "settings",
             "name": "Restaurant A+", "description": "Fresh food", "opening_hours": "12:00–23:00", "currency": "eur",
             "delivery_fee": "12.50", "minimum_order": "30", "accepts_delivery": "on", "accepts_pickup": "on",
         }
@@ -626,3 +627,57 @@ class InboxTests(PortalTestCase):
         self.client.post(url + "takeover/", {"next": url})
         self.convo.refresh_from_db()
         self.assertFalse(self.convo.taken_over)
+
+
+class DeliveryZoneSettingsTests(PortalTestCase):
+    def setUp(self):
+        super().setUp()
+        self.malabata = DeliveryZone.objects.create(restaurant=self.a, name="Malabata", fee=Decimal("15"))
+        DeliveryZone.objects.create(restaurant=self.b, name="B zone", fee=Decimal("5"))
+        self.client.force_login(self.chef)
+
+    def data(self, rows, initial=1):
+        data = {"section": "zones", "zones-TOTAL_FORMS": str(len(rows)), "zones-INITIAL_FORMS": str(initial),
+                "zones-MIN_NUM_FORMS": "0", "zones-MAX_NUM_FORMS": "1000"}
+        for i, row in enumerate(rows):
+            data.update({f"zones-{i}-{k}": v for k, v in row.items()})
+        return data
+
+    def test_settings_page_lists_own_zones(self):
+        page = self.client.get("/portal/settings/")
+        self.assertContains(page, '<form method="post" class="form panel zones-panel" id="zones" novalidate>')
+        self.assertContains(page, 'name="zones-0-name" value="Malabata"')
+        self.assertNotIn("Malabata", page.content.decode().split("</title>")[0])
+        self.assertNotContains(page, "B zone")
+
+    def test_add_edit_deactivate_and_remove_zones(self):
+        response = self.client.post("/portal/settings/", self.data([
+            {"id": self.malabata.pk, "name": "Malabata", "fee": "20"},  # unchecked "active" = inactive
+            {"name": "  Iberia ", "fee": "10", "active": "on"},
+        ]), follow=True)
+        self.assertContains(response, "Delivery zones saved.")
+        self.malabata.refresh_from_db()
+        self.assertEqual((self.malabata.fee, self.malabata.active), (Decimal("20"), False))
+        iberia = self.a.zones.get(name="Iberia")
+        self.assertEqual((iberia.fee, iberia.active), (Decimal("10"), True))
+        self.client.post("/portal/settings/", self.data([
+            {"id": self.malabata.pk, "name": "Malabata", "fee": "20", "DELETE": "on"},
+            {"id": iberia.pk, "name": "Iberia", "fee": "10", "active": "on"},
+        ], initial=2))
+        self.assertEqual(list(self.a.zones.values_list("name", flat=True)), ["Iberia"])
+
+    def test_zone_validation(self):
+        response = self.client.post("/portal/settings/", self.data([
+            {"id": self.malabata.pk, "name": "Malabata", "fee": "-1", "active": "on"},
+            {"name": "malabata", "fee": "5", "active": "on"},
+        ]))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Can&#x27;t be negative.")
+        self.assertContains(response, "already have a zone with this name")
+        self.assertEqual(self.a.zones.count(), 1)
+
+    def test_cannot_edit_another_restaurants_zone(self):
+        other = DeliveryZone.objects.get(name="B zone")
+        self.client.post("/portal/settings/", self.data([{"id": other.pk, "name": "Hacked", "fee": "0", "active": "on"}]))
+        other.refresh_from_db()
+        self.assertEqual(other.name, "B zone")

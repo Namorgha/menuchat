@@ -1,15 +1,19 @@
 """Cart and order operations. The AI calls these as tools; all prices and totals are computed here,
 never taken from the model's output."""
+import re
+import unicodedata
 from decimal import Decimal
+from difflib import SequenceMatcher
 
 from django.db import transaction
 from django.db.models import Max
 
-from restaurants.models import MenuItem, Order, OrderItem
+from restaurants.models import DeliveryZone, MenuItem, Order, OrderItem
 
 from .models import Conversation
 
 MAX_QUANTITY = 20
+ZONE_MATCH_THRESHOLD = 0.8  # similarity (0–1) needed to accept a misspelt neighbourhood
 
 
 class OrderingError(Exception):
@@ -92,6 +96,51 @@ def remove_from_cart(convo: Conversation, item_id, quantity=None) -> dict:
     return cart_summary(convo)
 
 
+def _normalize(text: str) -> str:
+    """Lowercase, no accents or punctuation: "Hay Al-Fath, Rte" -> "hay al fath rte"."""
+    text = unicodedata.normalize("NFKD", text or "")
+    text = "".join(c for c in text if not unicodedata.combining(c)).lower()
+    return " ".join(re.findall(r"\w+", text))
+
+
+def active_zones(restaurant) -> list[DeliveryZone]:
+    return list(restaurant.zones.filter(active=True))
+
+
+def match_zone(restaurant, text: str) -> DeliveryZone | None:
+    """The delivery zone a customer's neighbourhood (or address) refers to, tolerating typos and extra words."""
+    words = _normalize(text).split()
+    if not words:
+        return None
+    best, best_score = None, 0.0
+    for zone in active_zones(restaurant):
+        name = _normalize(zone.name)
+        size = len(name.split()) or 1
+        # Compare the zone name with every run of the same number of words, e.g. "near malabata beach".
+        candidates = [" ".join(words[i : i + size]) for i in range(max(len(words) - size + 1, 1))]
+        score = max(SequenceMatcher(None, name, c).ratio() for c in candidates)
+        if score > best_score:
+            best, best_score = zone, score
+    return best if best_score >= ZONE_MATCH_THRESHOLD else None
+
+
+def _zone_list(restaurant) -> str:
+    return ", ".join(f"{z.name} ({_money(z.fee, restaurant.currency)})" for z in active_zones(restaurant))
+
+
+def delivery_fee_for(convo: Conversation) -> Decimal | None:
+    """Delivery fee for this conversation; None while the neighbourhood is still unknown (zones in use)."""
+    restaurant = convo.customer.restaurant
+    if convo.fulfillment != "delivery":
+        return Decimal("0")
+    if not restaurant.zones.filter(active=True).exists():
+        return restaurant.delivery_fee  # flat fee when the restaurant has no zones
+    zone = convo.delivery_zone
+    if zone and zone.active and zone.restaurant_id == restaurant.id:
+        return zone.fee
+    return None
+
+
 def cart_summary(convo: Conversation) -> dict:
     restaurant = convo.customer.restaurant
     ids = [line["item_id"] for line in convo.cart]
@@ -118,19 +167,20 @@ def cart_summary(convo: Conversation) -> dict:
         convo.cart = [line for line in convo.cart if line["item_id"] not in dropped]
         convo.save(update_fields=["cart", "updated_at"])
 
-    fee = restaurant.delivery_fee if convo.fulfillment == "delivery" and lines else Decimal("0")
+    fee = delivery_fee_for(convo) if lines else Decimal("0")
     return {
         "lines": lines,
         "subtotal": _money(subtotal, restaurant.currency),
-        "delivery_fee": _money(fee, restaurant.currency),
-        "total": _money(subtotal + fee, restaurant.currency),
+        "delivery_fee": _money(fee, restaurant.currency) if fee is not None else "depends on the neighbourhood (ask for it)",
+        "total": _money(subtotal + (fee or 0), restaurant.currency) + ("" if fee is not None else " + delivery"),
         "fulfillment": convo.fulfillment or "not chosen yet",
         "delivery_address": convo.delivery_address or None,
+        "delivery_zone": convo.delivery_zone.name if convo.fulfillment == "delivery" and convo.delivery_zone else None,
         "removed_unavailable_items": dropped or None,
     }
 
 
-def set_fulfillment(convo: Conversation, method: str, address: str = "") -> dict:
+def set_fulfillment(convo: Conversation, method: str, address: str = "", neighbourhood: str = "") -> dict:
     restaurant = convo.customer.restaurant
     method = (method or "").lower().strip()
     if method not in {"delivery", "pickup"}:
@@ -140,12 +190,23 @@ def set_fulfillment(convo: Conversation, method: str, address: str = "") -> dict
     if method == "pickup" and not restaurant.accepts_pickup:
         raise OrderingError("This restaurant only does delivery.")
     convo.fulfillment = method
+    outside = None
     if method == "delivery":
         if address and len(address.strip()) >= 5:
             convo.delivery_address = address.strip()[:255]
+        place = neighbourhood or address
+        if place and active_zones(restaurant):
+            convo.delivery_zone = match_zone(restaurant, neighbourhood) or match_zone(restaurant, address)
+            outside = None if convo.delivery_zone else place
     else:
         convo.delivery_address = ""
-    convo.save(update_fields=["fulfillment", "delivery_address", "updated_at"])
+        convo.delivery_zone = None
+    convo.save(update_fields=["fulfillment", "delivery_address", "delivery_zone", "updated_at"])
+    if outside:
+        alternative = " Pickup is available." if restaurant.accepts_pickup else ""
+        raise OrderingError(
+            f"We don't deliver to “{outside.strip()[:80]}”. We deliver to: {_zone_list(restaurant)}.{alternative}"
+        )
     return cart_summary(convo)
 
 
@@ -168,7 +229,11 @@ def place_order(convo: Conversation, notes: str = "") -> Order:
             f"The minimum order is {_money(restaurant.minimum_order, restaurant.currency)}; "
             f"the cart is {_money(subtotal, restaurant.currency)}."
         )
-    fee = restaurant.delivery_fee if convo.fulfillment == "delivery" else Decimal("0")
+    fee = delivery_fee_for(convo)
+    if fee is None:
+        raise OrderingError(
+            f"Ask which neighbourhood to deliver to. We deliver to: {_zone_list(restaurant)}."
+        )
 
     # Lock the restaurant row so two simultaneous orders can't get the same number.
     type(restaurant).objects.select_for_update().get(pk=restaurant.pk)
@@ -180,6 +245,7 @@ def place_order(convo: Conversation, notes: str = "") -> Order:
         number=next_number,
         fulfillment=convo.fulfillment,
         delivery_address=convo.delivery_address,
+        delivery_zone=convo.delivery_zone.name if convo.fulfillment == "delivery" and convo.delivery_zone else "",
         notes=(notes or "")[:255],
         subtotal=subtotal,
         delivery_fee=fee,
