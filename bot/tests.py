@@ -393,6 +393,50 @@ class TakeoverTests(TestCase):
         self.assertFalse(convo.messages.last().sent)
 
 
+class ServiceWindowTests(TestCase):
+    """WhatsApp only allows free-form messages within 24 hours of the customer's last message."""
+
+    def setUp(self):
+        self.r, self.tagine, _ = make_restaurant(whatsapp_phone_number_id="PNID1")
+        self.convo = convo_for(self.r, "212655555555")
+        self.convo.add_message("user", "one tagine")
+        self.convo.save()
+        ordering.add_to_cart(self.convo, self.tagine.id)
+        ordering.set_fulfillment(self.convo, "pickup")
+        self.order = ordering.place_order(self.convo)
+
+    def confirm(self):
+        self.order.status = "confirmed"
+        with mock.patch("whatsapp.client.send_text", return_value=True) as send:
+            self.order.save()
+        return send
+
+    def test_status_update_sent_within_24_hours(self):
+        self.confirm().assert_called_once()
+        self.assertTrue(self.convo.messages.last().sent)
+
+    def test_status_update_skipped_and_logged_after_24_hours(self):
+        Conversation.objects.update(last_customer_message_at=timezone.now() - timedelta(hours=24, minutes=1))
+        with self.assertLogs("restaurants.notifications", "INFO") as logs:
+            send = self.confirm()
+        send.assert_not_called()
+        self.assertIn("over 24 hours old", logs.output[0])
+        last = self.convo.messages.last()
+        self.assertEqual((last.text, last.sent), ("✅ Order #1001 confirmed! We're on it.", False))
+
+    def test_web_demo_updates_are_always_shown(self):
+        web = convo_for(self.r, "web:abc")
+        web.add_message("user", "hi")
+        web.save()
+        Conversation.objects.update(last_customer_message_at=timezone.now() - timedelta(days=3))
+        ordering.add_to_cart(web, self.tagine.id)
+        ordering.set_fulfillment(web, "pickup")
+        order = ordering.place_order(web)
+        order.status = "confirmed"
+        order.save()
+        self.assertTrue(web.messages.last().sent)
+
+
 class DeploySetupTests(TestCase):
     """The Docker CMD runs seed_demo and createsuperuser --noinput on every start."""
 

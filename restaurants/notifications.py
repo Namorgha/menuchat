@@ -1,7 +1,11 @@
 """Tell the customer when their order status changes — on WhatsApp, or in the web demo chat."""
+import logging
+
 from bot.models import Conversation
 
 from .models import Order
+
+log = logging.getLogger(__name__)
 
 MESSAGES = {
     Order.Status.CONFIRMED: "✅ Order #{n} confirmed! We're on it.",
@@ -18,12 +22,17 @@ def notify_status_change(order: Order) -> None:
     if not template:
         return
     text = template.format(n=order.number, r=order.restaurant.name)
-
     convo, _ = Conversation.objects.get_or_create(customer=order.customer)
-    convo.add_message("assistant", text)
-    convo.save(update_fields=["history", "updated_at"])
 
+    sent = True
     if order.customer.channel == "whatsapp":
-        from whatsapp.client import send_text
+        if convo.in_service_window():
+            from whatsapp.client import send_text
 
-        send_text(order.restaurant, order.customer.external_id, text)
+            sent = send_text(order.restaurant, order.customer.external_id, text)
+        else:
+            # Outside the 24-hour window WhatsApp only accepts approved templates; a free-form send would fail.
+            log.info("Order %s status update not sent: customer's last message is over 24 hours old", order.pk)
+            sent = False
+    convo.add_message("assistant", text, sent=sent)
+    convo.save(update_fields=["history", "updated_at"])

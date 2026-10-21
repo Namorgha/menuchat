@@ -87,6 +87,8 @@ class OrdersTests(PortalTestCase):
         convo = Conversation.objects.create(
             customer=Customer.objects.create(restaurant=self.a, external_id="212655555555", name="Sara")
         )
+        convo.add_message("user", "One tagine for pickup please")
+        convo.save()
         ordering.add_to_cart(convo, tagine.id)
         ordering.set_fulfillment(convo, "pickup")
         self.order = ordering.place_order(convo)
@@ -103,7 +105,7 @@ class OrdersTests(PortalTestCase):
 
     def test_staff_moves_order_and_customer_is_notified(self):
         self.client.force_login(self.chef)
-        with mock.patch("whatsapp.client.send_text") as send:
+        with mock.patch("whatsapp.client.send_text", return_value=True) as send:
             self.assertEqual(self.set_status("confirmed").status_code, 200)
         send.assert_called_once()
         self.assertIn("#1001 confirmed", send.call_args.args[2])
@@ -140,7 +142,7 @@ class OrdersTests(PortalTestCase):
         admin = User.objects.create_superuser("admin", "admin@example.com", "pw-123456")
         self.client.force_login(admin)
         self.assertEqual(self.client.get("/portal/orders/").status_code, 200)
-        with mock.patch("whatsapp.client.send_text"):
+        with mock.patch("whatsapp.client.send_text", return_value=True):
             self.assertEqual(self.set_status("confirmed").status_code, 200)
 
     def test_toggle_open_from_the_header(self):
@@ -536,7 +538,7 @@ class DemoReadOnlyTests(TestCase):
     def test_demo_user_can_still_move_orders(self):
         order = make_order(self.r, 1001)
         self.assertNotContains(self.client.get("/portal/orders/"), "Demo mode:")
-        with mock.patch("whatsapp.client.send_text"):
+        with mock.patch("whatsapp.client.send_text", return_value=True):
             response = self.client.post(f"/portal/orders/{order.pk}/status/", {"status": "confirmed"})
         self.assertEqual(response.status_code, 200)
         order.refresh_from_db()
@@ -599,7 +601,7 @@ class InboxTests(PortalTestCase):
 
     def test_reply_refused_unless_taken_over_or_outside_24_hours(self):
         url = f"/portal/inbox/{self.convo.pk}/"
-        with mock.patch("whatsapp.client.send_text") as send:
+        with mock.patch("whatsapp.client.send_text", return_value=True) as send:
             response = self.client.post(url + "reply/", {"text": "hi"}, follow=True)
             self.assertContains(response, "Take over the conversation before replying")
             Conversation.objects.filter(pk=self.convo.pk).update(
