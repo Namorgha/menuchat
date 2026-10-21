@@ -337,6 +337,7 @@ class SettingsTests(PortalTestCase):
             "section": "settings",
             "name": "Restaurant A+", "description": "Fresh food", "opening_hours": "12:00–23:00", "currency": "eur",
             "delivery_fee": "12.50", "minimum_order": "30", "accepts_delivery": "on", "accepts_pickup": "on",
+            "alert_phone": "+212 612-345-678",
         }
         data.update(overrides)
         return data
@@ -352,6 +353,7 @@ class SettingsTests(PortalTestCase):
             ("Restaurant A+", "Fresh food", "12:00–23:00", "EUR", Decimal("12.50"), Decimal("30")),
         )
         self.assertFalse(self.a.is_open)  # unchecked box closes the restaurant
+        self.assertEqual(self.a.alert_phone, "212612345678")
         self.assertTrue(self.a.accepts_delivery and self.a.accepts_pickup)
 
     def test_invalid_settings_show_errors_and_change_nothing(self):
@@ -360,6 +362,8 @@ class SettingsTests(PortalTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(set(response.context["form"].errors), {"name", "delivery_fee"})
         self.assertContains(response, "Can&#x27;t be negative.")
+        response = self.client.post("/portal/settings/", self.data(alert_phone="12345"))
+        self.assertContains(response, "full number with country code")
         response = self.client.post("/portal/settings/", self.data(accepts_delivery="", accepts_pickup=""))
         self.assertContains(response, "Offer at least delivery or pickup")
         self.a.refresh_from_db()

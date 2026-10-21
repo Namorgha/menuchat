@@ -9,6 +9,7 @@ from django.db import transaction
 from django.db.models import Max
 
 from restaurants.models import DeliveryZone, MenuItem, Order, OrderItem
+from restaurants.notifications import alert_new_order
 
 from .models import Conversation
 
@@ -266,6 +267,7 @@ def place_order(convo: Conversation, notes: str = "") -> Order:
     )
     convo.cart = []
     convo.save(update_fields=["cart", "updated_at"])
+    transaction.on_commit(lambda: alert_new_order(order))  # once the items are saved too
     return order
 
 

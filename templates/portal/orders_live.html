@@ -2,7 +2,10 @@
 {% block title %}Orders{% endblock %}
 {% block content %}
 {% include "portal/_orders_tabs.html" %}
-<p class="board-status muted" id="board-status" aria-live="polite">Loading orders…</p>
+<div class="board-bar">
+  <p class="board-status muted" id="board-status" aria-live="polite">Loading orders…</p>
+  <button type="button" class="btn btn-sm" id="sound-toggle" aria-pressed="false">🔕 Sound off</button>
+</div>
 <div class="board" id="board"></div>
 {% endblock %}
 {% block scripts %}
@@ -16,6 +19,53 @@
   const status = document.getElementById("board-status");
   const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   let known = null;
+
+  // New-order alert: a short chime (Web Audio, no file to load) and a flashing tab title.
+  // Browsers only allow sound after a click on the page, so the button doubles as the "enable sound" gesture.
+  const soundBtn = document.getElementById("sound-toggle");
+  let audio = null;
+  let soundOn = true;
+  try { soundOn = localStorage.getItem("menuchat:sound") !== "off"; } catch {}
+  const showSound = () => {
+    const ready = soundOn && audio && audio.state === "running";
+    soundBtn.textContent = !soundOn ? "🔕 Sound off" : ready ? "🔔 Sound on" : "🔔 Click to enable sound";
+    soundBtn.setAttribute("aria-pressed", String(!!ready));
+  };
+  const unlock = () => {
+    audio = audio || new (window.AudioContext || window.webkitAudioContext)();
+    audio.resume().then(showSound);
+  };
+  document.addEventListener("click", e => { if (e.target !== soundBtn && soundOn) unlock(); }, { once: true });
+  soundBtn.addEventListener("click", () => {
+    if (soundOn && audio && audio.state === "running") soundOn = false;
+    else { soundOn = true; unlock(); }
+    try { localStorage.setItem("menuchat:sound", soundOn ? "on" : "off"); } catch {}
+    showSound();
+  });
+  showSound();
+  const chime = () => {
+    if (!soundOn || !audio || audio.state !== "running") return;
+    [[880, 0], [1320, 0.18], [880, 0.5], [1320, 0.68]].forEach(([freq, at]) => {
+      const osc = audio.createOscillator(), gain = audio.createGain();
+      const t = audio.currentTime + at;
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0.0001, t);
+      gain.gain.exponentialRampToValueAtTime(0.3, t + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.16);
+      osc.connect(gain).connect(audio.destination);
+      osc.start(t);
+      osc.stop(t + 0.17);
+    });
+  };
+  let flashing = null;
+  const stopFlash = () => { clearInterval(flashing); flashing = null; document.title = title; };
+  const flash = count => {
+    stopFlash();
+    let on = false;
+    const text = `🔔 ${count} new order${count > 1 ? "s" : ""}`;
+    flashing = setInterval(() => { document.title = (on = !on) ? text : title; }, 1000);
+  };
+  ["click", "keydown"].forEach(type => document.addEventListener(type, () => flashing && stopFlash()));
 
   const card = o => `
     <div class="card ${o.status === "new" ? "new" : ""}">
@@ -41,7 +91,8 @@
       return;
     }
     const ids = d.columns[0].orders.map(o => o.id);
-    if (known && ids.some(id => !known.includes(id))) document.title = `🔔 New order · ${title}`;
+    const fresh = known ? ids.filter(id => !known.includes(id)).length : 0;
+    if (fresh) { chime(); flash(ids.length); }
     known = ids;
     status.textContent = `Updated ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} · refreshes every 5 seconds`;
     board.innerHTML = d.columns.map(c => `
@@ -59,7 +110,6 @@
       method: "POST", credentials: "same-origin", headers: { "X-CSRFToken": csrf }, body: new URLSearchParams({ status: b.dataset.status }),
     });
     if (!r.ok) alert((await r.json().catch(() => ({}))).error || "Couldn't update the order.");
-    document.title = title;
     load();
   });
 

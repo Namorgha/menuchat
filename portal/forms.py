@@ -102,12 +102,13 @@ class RestaurantSettingsForm(forms.ModelForm):
         model = Restaurant
         fields = [
             "name", "description", "opening_hours", "currency", "delivery_fee", "minimum_order",
-            "accepts_delivery", "accepts_pickup", "is_open",
+            "accepts_delivery", "accepts_pickup", "is_open", "alert_phone",
         ]
         labels = {
             "accepts_delivery": "Offer delivery",
             "accepts_pickup": "Offer pickup",
             "is_open": "Open for orders",
+            "alert_phone": "New-order alerts to (WhatsApp)",
         }
 
     def __init__(self, *args, **kwargs):
@@ -126,6 +127,14 @@ class RestaurantSettingsForm(forms.ModelForm):
         if not currency:
             raise forms.ValidationError("Enter a currency, e.g. MAD.")
         return currency
+
+    def clean_alert_phone(self):
+        phone = "".join(c for c in self.cleaned_data["alert_phone"] if c.isdigit())
+        if phone.startswith("00"):
+            phone = phone[2:]
+        if phone and not 8 <= len(phone) <= 15:
+            raise forms.ValidationError("Enter the full number with country code, e.g. 212612345678.")
+        return phone
 
     def _non_negative(self, name):
         value = self.cleaned_data[name]

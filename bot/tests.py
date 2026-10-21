@@ -411,6 +411,64 @@ class DeliveryZoneTests(TestCase):
         self.assertEqual(json.loads(model.calls[1][-1]["content"])["delivery_fee"], "15.00 MAD")
 
 
+class NewOrderAlertTests(TestCase):
+    def setUp(self):
+        self.r, self.tagine, self.juice = make_restaurant(whatsapp_phone_number_id="PNID1", alert_phone="212600000001")
+        DeliveryZone.objects.create(restaurant=self.r, name="Malabata", fee=Decimal("15"))
+        self.convo = convo_for(self.r, "212655555555")
+        ordering.add_to_cart(self.convo, self.tagine.id, 2)
+        ordering.add_to_cart(self.convo, self.juice.id, 1, "no ice")
+        ordering.set_fulfillment(self.convo, "delivery", "12 Rue Ibn Khaldoun", "Malabata")
+
+    def place(self):
+        with mock.patch("whatsapp.client.send_text", return_value=True) as send, \
+             mock.patch("whatsapp.client.send_template", return_value=True) as template:
+            with self.captureOnCommitCallbacks(execute=True):
+                order = ordering.place_order(self.convo, "ring twice")
+        return order, send, template
+
+    def test_alert_sent_to_the_alert_number_on_new_order(self):
+        order, send, template = self.place()
+        send.assert_called_once()
+        restaurant, to, text = send.call_args.args
+        self.assertEqual((restaurant, to), (self.r, "212600000001"))
+        self.assertEqual(text, "\n".join([
+            "🔔 New order #1001",
+            "2× Tagine",
+            "1× Orange juice (no ice)",
+            "Total: 163.00 MAD · Cash on delivery",
+            "📍 Delivery: 12 Rue Ibn Khaldoun (Malabata)",
+            "👤 Sara · +212655555555",
+            "📝 ring twice",
+        ]))
+        template.assert_not_called()
+
+    def test_no_alert_without_an_alert_number(self):
+        Restaurant.objects.update(alert_phone="")
+        self.convo.customer.restaurant.refresh_from_db()
+        _, send, _ = self.place()
+        send.assert_not_called()
+
+    @override_settings(WHATSAPP_ALERT_TEMPLATE="new_order_alert", WHATSAPP_ALERT_TEMPLATE_LANGUAGE="fr")
+    def test_alert_uses_the_approved_template_when_configured(self):
+        _, send, template = self.place()
+        send.assert_not_called()
+        template.assert_called_once_with(self.r, "212600000001", "new_order_alert", "fr", [
+            "#1001", "2× Tagine, 1× Orange juice", "163.00 MAD (Cash on delivery)", "Delivery: 12 Rue Ibn Khaldoun (Malabata)",
+        ])
+
+    @override_settings(WHATSAPP_ACCESS_TOKEN="token")
+    def test_template_payload(self):
+        from whatsapp.client import send_template
+
+        with mock.patch("whatsapp.client.requests.post", return_value=mock.Mock(status_code=200)) as post:
+            self.assertTrue(send_template(self.r, "2126", "new_order_alert", "en", ["#1", "a\nb", ""]))
+        body = post.call_args.kwargs["json"]
+        self.assertEqual(body["template"], {"name": "new_order_alert", "language": {"code": "en"}, "components": [
+            {"type": "body", "parameters": [{"type": "text", "text": "#1"}, {"type": "text", "text": "a b"}, {"type": "text", "text": "-"}]},
+        ]})
+
+
 class TakeoverTests(TestCase):
     def setUp(self):
         self.r, _, _ = make_restaurant(whatsapp_phone_number_id="PNID1")

@@ -32,6 +32,11 @@
     {% include "portal/_field.html" with field=form.accepts_pickup %}
   </fieldset>
 
+  <fieldset class="fieldset">
+    <legend>Alerts</legend>
+    {% include "portal/_field.html" with field=form.alert_phone %}
+  </fieldset>
+
   <div class="form-actions">
     <button class="btn btn-primary">Save settings</button>
   </div>

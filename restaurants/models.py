@@ -18,6 +18,11 @@ class Restaurant(models.Model):
     accepts_delivery = models.BooleanField(default=True)
     accepts_pickup = models.BooleanField(default=True)
     is_open = models.BooleanField(default=True, help_text="Turn off to stop taking orders.")
+    alert_phone = models.CharField(
+        max_length=20, blank=True,
+        help_text="WhatsApp number that gets a message for every new order, with country code (e.g. 212612345678). "
+        "Use a different number from the restaurant's own.",
+    )
 
     # WhatsApp Cloud API — incoming messages are routed to the restaurant by phone_number_id.
     whatsapp_phone_number_id = models.CharField(max_length=64, blank=True, unique=True, null=True)

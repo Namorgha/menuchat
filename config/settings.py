@@ -129,6 +129,11 @@ WHATSAPP_API_VERSION = os.getenv("WHATSAPP_API_VERSION", "v21.0")
 WHATSAPP_VERIFY_TOKEN = os.getenv("WHATSAPP_VERIFY_TOKEN", "")
 WHATSAPP_APP_SECRET = os.getenv("WHATSAPP_APP_SECRET", "")  # used to verify webhook signatures
 WHATSAPP_ACCESS_TOKEN = os.getenv("WHATSAPP_ACCESS_TOKEN", "")  # default token if a restaurant has none
+# New-order alerts: free-form messages only reach the alert number within 24 hours of it messaging the restaurant's
+# number. Set an approved utility template (body with 4 variables: order number, items, total and payment,
+# delivery or pickup) to send alerts at any time.
+WHATSAPP_ALERT_TEMPLATE = os.getenv("WHATSAPP_ALERT_TEMPLATE", "")
+WHATSAPP_ALERT_TEMPLATE_LANGUAGE = os.getenv("WHATSAPP_ALERT_TEMPLATE_LANGUAGE", "en")
 # When the owner replies from the WhatsApp Business app (Coexistence), the bot stays quiet this long.
 OWNER_REPLY_PAUSE_MINUTES = int(os.getenv("OWNER_REPLY_PAUSE_MINUTES", "30"))
 
