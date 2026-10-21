@@ -15,7 +15,7 @@ Let restaurant customers order food on WhatsApp. An AI assistant answers in **Da
   - **Menu** — add, edit, delete and reorder categories and items, prices, descriptions and photos; a sold-out switch that applies instantly
   - **Settings** — name, description, opening hours, currency, delivery fee, minimum order, delivery/pickup
   - **Open/closed switch** in the header on every page; validated forms with inline errors
-  - **"Try the demo"** one-click sign-in to the demo restaurant (optional, `DEMO_LOGIN_ENABLED=true`)
+  - **"Try the demo"** one-click sign-in to the demo restaurant (optional, `DEMO_LOGIN_ENABLED=true`); the demo account is read-only for the menu and settings but can move orders
 - **Automatic customer updates** — each status change sends a WhatsApp message (or appears in the web demo chat)
 - **Multi-restaurant** — one server, many restaurants; incoming messages are routed by WhatsApp phone number ID, and staff only see and edit their own restaurants
 - **Web demo chat** — try the full flow without WhatsApp, rate-limited per session
@@ -105,7 +105,7 @@ Menu photos are stored in **Vercel Blob** when `BLOB_READ_WRITE_TOKEN` is set (V
 python manage.py test
 ```
 
-The tests cover pricing and order rules, the AI tool loop (with a scripted fake model), webhook signature checks, routing and duplicate handling, demo rate limiting, and the portal: permissions (staff of one restaurant can't see or edit another's orders, menu or settings), status transitions, order history, menu CRUD and validation, photo storage (Vercel Blob and upload failures), settings, and demo login.
+The tests cover pricing and order rules, the AI tool loop (with a scripted fake model), webhook signature checks, routing and duplicate handling, demo rate limiting, and the portal: permissions (staff of one restaurant can't see or edit another's orders, menu or settings), status transitions, order history, menu CRUD and validation, photo storage (Vercel Blob and upload failures), settings, demo login and demo read-only mode.
 
 ## What's next
 

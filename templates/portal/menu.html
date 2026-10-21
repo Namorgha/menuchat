@@ -1,12 +1,13 @@
 {% extends "portal/base.html" %}
 {% block title %}Menu{% endblock %}
 {% block content %}
+<fieldset class="plain{% if read_only %} read-only{% endif %}" {% if read_only %}disabled{% endif %}>
 <div class="page-head">
   <div>
     <h1>Menu</h1>
     <p class="muted">Changes reach the assistant on the next message.</p>
   </div>
-  <a class="btn btn-primary" href="{% url 'portal:item_create' %}">+ Add item</a>
+  <a class="btn btn-primary edit-only" href="{% url 'portal:item_create' %}">+ Add item</a>
 </div>
 
 <form method="post" action="{% url 'portal:category_create' %}" class="inline-add">
@@ -22,12 +23,12 @@
     <h2>{{ category.name }} <span class="muted">{{ category.items.all|length }}</span></h2>
     <div class="menu-actions">
       {% include "portal/_move.html" with url_name="portal:category_move" pk=category.pk first=forloop.first last=forloop.last label=category.name %}
-      <a class="btn btn-sm" href="{% url 'portal:category_edit' category.pk %}">Rename</a>
-      <a class="btn btn-sm" href="{% url 'portal:category_delete' category.pk %}">Delete</a>
+      <a class="btn btn-sm edit-only" href="{% url 'portal:category_edit' category.pk %}">Rename</a>
+      <a class="btn btn-sm edit-only" href="{% url 'portal:category_delete' category.pk %}">Delete</a>
     </div>
   </header>
   {% include "portal/_menu_items.html" with items=category.items.all %}
-  <a class="add-row" href="{% url 'portal:item_create' %}?category={{ category.pk }}">+ Add item to {{ category.name }}</a>
+  <a class="add-row edit-only" href="{% url 'portal:item_create' %}?category={{ category.pk }}">+ Add item to {{ category.name }}</a>
 </section>
 {% empty %}
 <div class="empty-state">No categories yet. Add one above, e.g. “Starters” or “Drinks”.</div>
@@ -39,4 +40,5 @@
   {% include "portal/_menu_items.html" with items=uncategorized %}
 </section>
 {% endif %}
+</fieldset>
 {% endblock %}

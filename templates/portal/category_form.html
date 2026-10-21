@@ -10,10 +10,12 @@
 
 <form method="post" action="{% if category %}{% url 'portal:category_edit' category.pk %}{% else %}{% url 'portal:category_create' %}{% endif %}" class="form panel" novalidate>
   {% csrf_token %}
+  <fieldset class="plain form" {% if read_only %}disabled{% endif %}>
   {% include "portal/_field.html" with field=form.name %}
   <div class="form-actions">
     <button class="btn btn-primary">Save</button>
     <a class="btn" href="{% url 'portal:menu' %}">Cancel</a>
   </div>
+  </fieldset>
 </form>
 {% endblock %}

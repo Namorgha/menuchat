@@ -476,3 +476,77 @@ class PhotoStorageTests(PortalTestCase):
         item.refresh_from_db()
         self.assertFalse(item.image)
 
+
+@override_settings(DEMO_STAFF_USERNAME="demo")
+class DemoReadOnlyTests(TestCase):
+    def setUp(self):
+        self.r = make_restaurant("demo-place", "Demo Place")
+        self.cat = MenuCategory.objects.create(restaurant=self.r, name="Mains", position=0)
+        MenuCategory.objects.create(restaurant=self.r, name="Drinks", position=1)
+        self.item = MenuItem.objects.create(restaurant=self.r, category=self.cat, name="Tagine", price=Decimal("65"), position=0)
+        MenuItem.objects.create(restaurant=self.r, category=self.cat, name="Couscous", price=Decimal("70"), position=1)
+        self.demo = User.objects.create_user("demo")
+        self.r.staff.add(self.demo)
+        self.client.force_login(self.demo)
+
+    def snapshot(self):
+        return (
+            list(Restaurant.objects.values_list("name", "is_open", "delivery_fee")),
+            list(MenuCategory.objects.values_list("id", "name", "position")),
+            list(MenuItem.objects.values_list("id", "name", "price", "position", "is_available", "category")),
+        )
+
+    def test_menu_and_settings_pages_are_shown_read_only(self):
+        for url in ["/portal/menu/", "/portal/settings/", f"/portal/menu/items/{self.item.pk}/edit/",
+                    "/portal/menu/items/new/", f"/portal/menu/categories/{self.cat.pk}/edit/",
+                    f"/portal/menu/items/{self.item.pk}/delete/"]:
+            page = self.client.get(url)
+            self.assertContains(page, "Demo mode:", msg_prefix=url)
+            self.assertContains(page, "disabled", msg_prefix=url)
+        self.assertContains(self.client.get("/portal/menu/"), '<fieldset class="plain read-only" disabled>')
+
+    def test_changes_are_refused_server_side(self):
+        before = self.snapshot()
+        item, cat = self.item.pk, self.cat.pk
+        posts = [
+            ("/portal/settings/", {"name": "Hacked", "currency": "MAD", "delivery_fee": "0", "minimum_order": "0", "accepts_pickup": "on"}),
+            ("/portal/toggle-open/", {}),
+            ("/portal/menu/categories/new/", {"name": "Hacked"}),
+            (f"/portal/menu/categories/{cat}/edit/", {"name": "Hacked"}),
+            (f"/portal/menu/categories/{cat}/delete/", {}),
+            (f"/portal/menu/categories/{cat}/move/", {"direction": "down"}),
+            ("/portal/menu/items/new/", {"name": "Hacked", "price": "1"}),
+            (f"/portal/menu/items/{item}/edit/", {"name": "Hacked", "price": "1"}),
+            (f"/portal/menu/items/{item}/move/", {"direction": "down"}),
+            (f"/portal/menu/items/{item}/availability/", {}),
+            (f"/portal/menu/items/{item}/delete/", {}),
+        ]
+        for url, data in posts:
+            response = self.client.post(url, data)
+            self.assertEqual(response.status_code, 302, url)
+        for url in ["/portal/toggle-open/", f"/portal/menu/items/{item}/availability/"]:
+            response = self.client.post(url, HTTP_ACCEPT="application/json")
+            self.assertEqual(response.status_code, 403, url)
+            self.assertEqual(response.json(), {"error": "Demo mode: changes are disabled."})
+        self.assertEqual(self.snapshot(), before)
+        self.assertContains(self.client.get("/portal/menu/"), "Demo mode: changes are disabled.")
+
+    def test_demo_user_can_still_move_orders(self):
+        order = make_order(self.r, 1001)
+        self.assertNotContains(self.client.get("/portal/orders/"), "Demo mode:")
+        with mock.patch("whatsapp.client.send_text"):
+            response = self.client.post(f"/portal/orders/{order.pk}/status/", {"status": "confirmed"})
+        self.assertEqual(response.status_code, 200)
+        order.refresh_from_db()
+        self.assertEqual(order.status, "confirmed")
+
+    def test_regular_staff_are_not_read_only(self):
+        chef = User.objects.create_user("chef")
+        self.r.staff.add(chef)
+        self.client.force_login(chef)
+        page = self.client.get("/portal/menu/")
+        self.assertNotContains(page, "Demo mode:")
+        self.assertNotContains(page, "disabled>")
+        self.client.post(f"/portal/menu/items/{self.item.pk}/availability/")
+        self.item.refresh_from_db()
+        self.assertFalse(self.item.is_available)

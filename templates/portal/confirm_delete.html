@@ -7,7 +7,7 @@
   <p class="muted">This can't be undone.</p>
   <form method="post" class="form-actions">
     {% csrf_token %}
-    <button class="btn btn-danger">Delete</button>
+    <button class="btn btn-danger" {% if read_only %}disabled{% endif %}>Delete</button>
     <a class="btn" href="{% url 'portal:menu' %}">Cancel</a>
   </form>
 </div>

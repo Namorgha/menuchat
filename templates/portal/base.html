@@ -40,12 +40,16 @@
         </div>
         <form method="post" action="{% url 'portal:toggle_open' %}" data-switch>
           {% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}">
-          <button type="submit" class="toggle" role="switch" aria-checked="{{ restaurant.is_open|yesno:'true,false' }}" title="Open or pause orders">
+          <button type="submit" class="toggle" role="switch" aria-checked="{{ restaurant.is_open|yesno:'true,false' }}" title="{% if request.read_only %}Disabled in demo mode{% else %}Open or pause orders{% endif %}" {% if request.read_only %}disabled{% endif %}>
             <span class="toggle-track" aria-hidden="true"></span>
             <span class="toggle-label">{{ restaurant.is_open|yesno:"Open,Closed" }}</span>
           </button>
         </form>
       </header>
+
+      {% if read_only and section != "orders" %}
+      <div class="demo-banner" role="note"><b>Demo mode:</b> changes are disabled. You can still move orders through the board.</div>
+      {% endif %}
 
       {% if messages %}
       <div class="flash-stack" role="status">

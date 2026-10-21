@@ -49,6 +49,7 @@ BOARD_COLUMNS = [
     ("Done today", [Order.Status.COMPLETED, Order.Status.CANCELLED]),
 ]
 HISTORY_PAGE_SIZE = 20
+DEMO_READ_ONLY = "Demo mode: changes are disabled."
 
 
 # ---------- Access ----------
@@ -69,6 +70,26 @@ def portal_view(view):
         slug = request.session.get(SESSION_KEY)
         request.restaurants = restaurants
         request.restaurant = next((r for r in restaurants if r.slug == slug), restaurants[0])
+        request.read_only = is_demo_user(request.user)
+        return view(request, *args, **kwargs)
+    return wrapper
+
+
+def is_demo_user(user) -> bool:
+    """The shared demo account can look at the menu and settings but not change them."""
+    return user.get_username() == settings.DEMO_STAFF_USERNAME and not user.is_superuser
+
+
+def editable(view):
+    """Refuse changes from the demo account. Use under @portal_view; GETs still show the page."""
+    @wraps(view)
+    def wrapper(request, *args, **kwargs):
+        if request.method == "POST" and request.read_only:
+            if wants_json(request):
+                return JsonResponse({"error": DEMO_READ_ONLY}, status=403)
+            messages.error(request, DEMO_READ_ONLY)
+            on_settings = request.path == reverse("portal:settings")
+            return redirect_back(request, fallback="portal:settings" if on_settings else "portal:menu")
         return view(request, *args, **kwargs)
     return wrapper
 
@@ -85,7 +106,9 @@ def redirect_back(request, fallback="portal:orders"):
 
 
 def page(request, template, section, context=None):
-    return render(request, template, {"restaurant": request.restaurant, "section": section, **(context or {})})
+    return render(request, template, {
+        "restaurant": request.restaurant, "section": section, "read_only": request.read_only, **(context or {}),
+    })
 
 
 # ---------- Sign in ----------
@@ -133,6 +156,7 @@ def switch_restaurant(request):
 
 @portal_view
 @require_POST
+@editable
 def toggle_open(request):
     restaurant = request.restaurant
     restaurant.is_open = not restaurant.is_open
@@ -273,6 +297,7 @@ def menu(request):
 
 @portal_view
 @require_POST
+@editable
 def category_create(request):
     form = CategoryForm(request.POST)
     if form.is_valid():
@@ -286,6 +311,7 @@ def category_create(request):
 
 
 @portal_view
+@editable
 def category_edit(request, pk):
     category = get_object_or_404(MenuCategory, restaurant=request.restaurant, pk=pk)
     form = CategoryForm(request.POST or None, instance=category)
@@ -297,6 +323,7 @@ def category_edit(request, pk):
 
 
 @portal_view
+@editable
 def category_delete(request, pk):
     category = get_object_or_404(MenuCategory, restaurant=request.restaurant, pk=pk)
     if request.method == "POST":
@@ -312,6 +339,7 @@ def category_delete(request, pk):
 
 @portal_view
 @require_POST
+@editable
 def category_move(request, pk):
     category = get_object_or_404(MenuCategory, restaurant=request.restaurant, pk=pk)
     _move(category, request.restaurant.categories.order_by("position", "id"), request.POST.get("direction"))
@@ -331,6 +359,7 @@ def _save_item(form, item) -> bool:
 
 
 @portal_view
+@editable
 def item_create(request):
     restaurant = request.restaurant
     category_id = request.GET.get("category", "")
@@ -347,6 +376,7 @@ def item_create(request):
 
 
 @portal_view
+@editable
 def item_edit(request, pk):
     item = get_object_or_404(MenuItem, restaurant=request.restaurant, pk=pk)
     old_category_id = item.category_id
@@ -362,6 +392,7 @@ def item_edit(request, pk):
 
 
 @portal_view
+@editable
 def item_delete(request, pk):
     item = get_object_or_404(MenuItem, restaurant=request.restaurant, pk=pk)
     if request.method == "POST":
@@ -376,6 +407,7 @@ def item_delete(request, pk):
 
 @portal_view
 @require_POST
+@editable
 def item_move(request, pk):
     item = get_object_or_404(MenuItem, restaurant=request.restaurant, pk=pk)
     siblings = request.restaurant.items.filter(category=item.category).order_by("position", "id")
@@ -385,6 +417,7 @@ def item_move(request, pk):
 
 @portal_view
 @require_POST
+@editable
 def item_availability(request, pk):
     item = get_object_or_404(MenuItem, restaurant=request.restaurant, pk=pk)
     item.is_available = not item.is_available
@@ -399,6 +432,7 @@ def item_availability(request, pk):
 # ---------- Settings ----------
 
 @portal_view
+@editable
 def restaurant_settings(request):
     form = RestaurantSettingsForm(request.POST or None, instance=request.restaurant)
     if request.method == "POST":
