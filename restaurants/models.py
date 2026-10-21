@@ -94,6 +94,9 @@ class Order(models.Model):
         DELIVERY = "delivery", "Delivery"
         PICKUP = "pickup", "Pickup"
 
+    class Payment(models.TextChoices):
+        CASH = "cash", "Cash"
+
     restaurant = models.ForeignKey(Restaurant, on_delete=models.CASCADE, related_name="orders")
     customer = models.ForeignKey(Customer, on_delete=models.PROTECT, related_name="orders")
     number = models.PositiveIntegerField(help_text="Per-restaurant order number shown to customers.")
@@ -101,6 +104,7 @@ class Order(models.Model):
     fulfillment = models.CharField(max_length=10, choices=Fulfillment.choices, default=Fulfillment.DELIVERY)
     delivery_address = models.CharField(max_length=255, blank=True)
     notes = models.CharField(max_length=255, blank=True)
+    payment_method = models.CharField(max_length=10, choices=Payment.choices, default=Payment.CASH)
     subtotal = models.DecimalField(max_digits=10, decimal_places=2)
     delivery_fee = models.DecimalField(max_digits=8, decimal_places=2, default=Decimal("0"))
     total = models.DecimalField(max_digits=10, decimal_places=2)
@@ -110,6 +114,11 @@ class Order(models.Model):
     class Meta:
         ordering = ["-created_at"]
         unique_together = [("restaurant", "number")]
+
+    @property
+    def payment_label(self) -> str:
+        """How the customer pays, as shown to them, the kitchen and in alerts."""
+        return "Cash on delivery" if self.fulfillment == self.Fulfillment.DELIVERY else "Cash at pickup"
 
     def __str__(self):
         return f"#{self.number} · {self.restaurant.name}"

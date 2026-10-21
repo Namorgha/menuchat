@@ -199,6 +199,7 @@ def orders_data(request):
             "address": o.delivery_address,
             "notes": o.notes,
             "total": f"{o.total:.2f} {restaurant.currency}",
+            "payment": o.payment_label,
             "created": timezone.localtime(o.created_at).strftime("%H:%M"),
             "items": [{"q": i.quantity, "name": i.name, "note": i.note} for i in o.items.all()],
             "actions": [{"status": s, "label": ACTION_LABELS[s]} for s in NEXT_STATUSES.get(o.status, [])],

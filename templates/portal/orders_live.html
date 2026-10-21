@@ -25,6 +25,7 @@
       ${o.address ? `<div class="addr">📍 ${esc(o.address)}</div>` : ""}
       ${o.notes ? `<div class="note">📝 ${esc(o.notes)}</div>` : ""}
       <div class="row"><span>Total</span><span>${esc(o.total)}</span></div>
+      <div class="pay">💵 ${esc(o.payment)}</div>
       ${o.actions.length ? `<div class="actions">${o.actions.map(a =>
         `<button class="btn btn-sm ${a.status === "cancelled" ? "" : "btn-primary"}" data-order="${o.id}" data-status="${a.status}">${esc(a.label)}</button>`).join("")}</div>` : ""}
     </div>`;

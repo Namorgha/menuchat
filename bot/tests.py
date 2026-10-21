@@ -138,6 +138,10 @@ class EngineTests(TestCase):
         # the model saw each tool result
         self.assertEqual(model.calls[-1][-1]["role"], "tool")
         self.assertTrue(json.loads(model.calls[-1][-1]["content"])["placed"])
+        # cash on delivery: in the tool result the bot confirms from, and in the instructions
+        self.assertEqual(json.loads(model.calls[-1][-1]["content"])["payment"], "Cash on delivery")
+        self.assertEqual(order.payment_method, "cash")
+        self.assertIn("cash on delivery", model.calls[0][0]["content"])
 
     def test_every_message_is_logged_in_full_and_opens_the_service_window(self):
         model = FakeModel(*[{"content": "Salam!"}] * 20)

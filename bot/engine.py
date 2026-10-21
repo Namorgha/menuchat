@@ -110,7 +110,7 @@ def system_prompt(restaurant: Restaurant, customer: Customer, convo: Conversatio
     return f"""You are the WhatsApp ordering assistant for {restaurant.name}. {restaurant.description}
 Customer name: {customer.name or "unknown"}.
 Opening hours: {restaurant.opening_hours or "not specified"}. Currently {"OPEN" if restaurant.is_open else "CLOSED — do not take orders"}.
-Services: {", ".join(services)}. Delivery fee: {restaurant.delivery_fee} {restaurant.currency}. Minimum order: {restaurant.minimum_order} {restaurant.currency}.
+Services: {", ".join(services)}. Payment: cash on delivery (or cash at pickup) only; there's no online or card payment. Delivery fee: {restaurant.delivery_fee} {restaurant.currency}. Minimum order: {restaurant.minimum_order} {restaurant.currency}.
 
 Current menu (use these ids with the tools; SOLD OUT items cannot be ordered):
 {menu_text(restaurant)}
@@ -126,7 +126,7 @@ How to work:
 - Make all the tool calls you need in a single response: e.g. one add_to_cart per item plus set_fulfillment together.
 - When the customer confirms a cart that is already saved, just call place_order.
 - Before placing an order: show the cart and total, confirm delivery (with address) or pickup, and get a clear "yes".
-- After place_order succeeds, give the order number and total, and say they'll get updates here.
+- After place_order succeeds, give the order number, the total and the payment ("payment" from the tool, e.g. cash on delivery), and say they'll get updates here.
 - If a tool returns an error, explain it simply and help fix it.
 - Stay on topic: menu, ordering, hours, order status. Politely decline anything else."""
 
@@ -207,7 +207,12 @@ def _run_tool(convo: Conversation, name: str, raw_args: str):
             return ordering.set_fulfillment(convo, args.get("method", ""), args.get("address", "")), None
         if name == "place_order":
             order = ordering.place_order(convo, args.get("notes", ""))
-            return {"placed": True, "order_number": order.number, "total": f"{order.total:.2f} {order.restaurant.currency}"}, order
+            return {
+                "placed": True,
+                "order_number": order.number,
+                "total": f"{order.total:.2f} {order.restaurant.currency}",
+                "payment": order.payment_label,
+            }, order
         if name == "order_status":
             return ordering.latest_order_status(convo), None
         return {"error": f"Unknown tool {name}."}, None

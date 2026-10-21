@@ -102,6 +102,7 @@ class OrdersTests(PortalTestCase):
         self.assertContains(page, "Restaurant A")
         data = self.client.get("/portal/orders/data/").json()
         self.assertEqual([o["number"] for o in data["columns"][0]["orders"]], [self.order.number])
+        self.assertEqual(data["columns"][0]["orders"][0]["payment"], "Cash at pickup")
 
     def test_staff_moves_order_and_customer_is_notified(self):
         self.client.force_login(self.chef)

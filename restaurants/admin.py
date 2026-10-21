@@ -39,7 +39,7 @@ class OrderItemInline(admin.TabularInline):
 @admin.register(Order)
 class OrderAdmin(admin.ModelAdmin):
     list_display = ("number", "restaurant", "customer", "status", "fulfillment", "total", "created_at")
-    list_filter = ("restaurant", "status", "fulfillment")
+    list_filter = ("restaurant", "status", "fulfillment", "payment_method")
     readonly_fields = ("subtotal", "delivery_fee", "total", "created_at")
     inlines = [OrderItemInline]
 
