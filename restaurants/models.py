@@ -47,6 +47,7 @@ class MenuItem(models.Model):
     name = models.CharField(max_length=120)
     description = models.CharField(max_length=255, blank=True)
     price = models.DecimalField(max_digits=8, decimal_places=2)
+    image = models.ImageField(upload_to="menu/%Y/%m/", blank=True)
     is_available = models.BooleanField(default=True)
     position = models.PositiveIntegerField(default=0)
 

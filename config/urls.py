@@ -1,6 +1,8 @@
+from django.conf import settings
 from django.contrib import admin
 from django.http import HttpResponse
-from django.urls import path
+from django.urls import path, re_path
+from django.views.static import serve
 
 from dashboard import views as d
 from whatsapp.views import webhook
@@ -18,4 +20,6 @@ urlpatterns = [
     path("webhooks/whatsapp/", webhook, name="whatsapp_webhook"),
     path("healthz", lambda r: HttpResponse("ok")),
     path("admin/", admin.site.urls),
+    # Menu photos. Small enough to serve from Django; put a CDN or object storage in front at scale.
+    re_path(r"^media/(?P<path>.*)$", serve, {"document_root": settings.MEDIA_ROOT}),
 ]
