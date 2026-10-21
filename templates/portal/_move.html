@@ -1,0 +1,5 @@
+<form method="post" action="{% url url_name pk %}" class="move">
+  {% csrf_token %}
+  <button class="btn btn-sm icon-btn" name="direction" value="up" {% if first %}disabled{% endif %} aria-label="Move {{ label }} up" title="Move up">↑</button>
+  <button class="btn btn-sm icon-btn" name="direction" value="down" {% if last %}disabled{% endif %} aria-label="Move {{ label }} down" title="Move down">↓</button>
+</form>

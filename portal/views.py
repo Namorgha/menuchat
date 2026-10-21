@@ -4,7 +4,7 @@ from django.contrib import messages
 from django.contrib.auth import views as auth_views
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
-from django.db.models import Q
+from django.db.models import Max, Prefetch, Q
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -12,7 +12,9 @@ from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_GET, require_POST
 
-from restaurants.models import Order, Restaurant
+from restaurants.models import MenuCategory, MenuItem, Order, Restaurant
+
+from .forms import CategoryForm, MenuItemForm
 
 SESSION_KEY = "portal_restaurant"
 
@@ -200,3 +202,150 @@ def order_history(request):
 def dashboard_redirect(request, **kwargs):
     """The old /dashboard/ URLs now live in the portal."""
     return redirect("portal:orders")
+
+
+# ---------- Menu ----------
+
+def _move(obj, siblings, direction):
+    """Swap obj with its neighbour in `siblings` and renumber positions 0..n."""
+    siblings = list(siblings)
+    i = next(n for n, s in enumerate(siblings) if s.pk == obj.pk)
+    j = i - 1 if direction == "up" else i + 1
+    if 0 <= j < len(siblings):
+        siblings[i], siblings[j] = siblings[j], siblings[i]
+    for position, sibling in enumerate(siblings):
+        if sibling.position != position:
+            sibling.position = position
+            sibling.save(update_fields=["position"])
+
+
+def _next_position(queryset):
+    top = queryset.aggregate(top=Max("position"))["top"]
+    return 0 if top is None else top + 1
+
+
+@portal_view
+@require_GET
+def menu(request):
+    restaurant = request.restaurant
+    items = MenuItem.objects.order_by("position", "id")
+    categories = restaurant.categories.prefetch_related(Prefetch("items", queryset=items))
+    uncategorized = items.filter(restaurant=restaurant, category__isnull=True)
+    return page(request, "portal/menu.html", "menu", {
+        "categories": categories,
+        "uncategorized": uncategorized,
+        "category_form": CategoryForm(),
+    })
+
+
+@portal_view
+@require_POST
+def category_create(request):
+    form = CategoryForm(request.POST)
+    if form.is_valid():
+        category = form.save(commit=False)
+        category.restaurant = request.restaurant
+        category.position = _next_position(request.restaurant.categories.all())
+        category.save()
+        messages.success(request, f"Category “{category.name}” added.")
+        return redirect("portal:menu")
+    return page(request, "portal/category_form.html", "menu", {"form": form})
+
+
+@portal_view
+def category_edit(request, pk):
+    category = get_object_or_404(MenuCategory, restaurant=request.restaurant, pk=pk)
+    form = CategoryForm(request.POST or None, instance=category)
+    if request.method == "POST" and form.is_valid():
+        form.save()
+        messages.success(request, f"Category “{category.name}” saved.")
+        return redirect("portal:menu")
+    return page(request, "portal/category_form.html", "menu", {"form": form, "category": category})
+
+
+@portal_view
+def category_delete(request, pk):
+    category = get_object_or_404(MenuCategory, restaurant=request.restaurant, pk=pk)
+    if request.method == "POST":
+        category.delete()  # its items stay on the menu, without a category
+        messages.success(request, f"Category “{category.name}” deleted.")
+        return redirect("portal:menu")
+    count = category.items.count()
+    return page(request, "portal/confirm_delete.html", "menu", {
+        "title": f"Delete “{category.name}”?",
+        "detail": f"Its {count} item{'s' if count != 1 else ''} will stay on the menu without a category." if count else "",
+    })
+
+
+@portal_view
+@require_POST
+def category_move(request, pk):
+    category = get_object_or_404(MenuCategory, restaurant=request.restaurant, pk=pk)
+    _move(category, request.restaurant.categories.order_by("position", "id"), request.POST.get("direction"))
+    return redirect(f"{reverse('portal:menu')}#category-{category.pk}")
+
+
+@portal_view
+def item_create(request):
+    restaurant = request.restaurant
+    category_id = request.GET.get("category", "")
+    initial = {"category": restaurant.categories.filter(pk=category_id).first() if category_id.isdigit() else None}
+    form = MenuItemForm(request.POST or None, request.FILES or None, restaurant=restaurant, initial=initial)
+    if request.method == "POST" and form.is_valid():
+        item = form.save(commit=False)
+        item.restaurant = restaurant
+        item.position = _next_position(restaurant.items.filter(category=item.category))
+        item.save()
+        messages.success(request, f"“{item.name}” added to the menu.")
+        return redirect(f"{reverse('portal:menu')}#item-{item.pk}")
+    return page(request, "portal/item_form.html", "menu", {"form": form})
+
+
+@portal_view
+def item_edit(request, pk):
+    item = get_object_or_404(MenuItem, restaurant=request.restaurant, pk=pk)
+    old_category_id = item.category_id
+    form = MenuItemForm(request.POST or None, request.FILES or None, instance=item, restaurant=request.restaurant)
+    if request.method == "POST" and form.is_valid():
+        item = form.save(commit=False)
+        if item.category_id != old_category_id:
+            item.position = _next_position(request.restaurant.items.filter(category=item.category).exclude(pk=item.pk))
+        item.save()
+        messages.success(request, f"“{item.name}” saved.")
+        return redirect(f"{reverse('portal:menu')}#item-{item.pk}")
+    return page(request, "portal/item_form.html", "menu", {"form": form, "item": item})
+
+
+@portal_view
+def item_delete(request, pk):
+    item = get_object_or_404(MenuItem, restaurant=request.restaurant, pk=pk)
+    if request.method == "POST":
+        item.delete()  # past orders keep their own copy of the name and price
+        messages.success(request, f"“{item.name}” deleted.")
+        return redirect("portal:menu")
+    return page(request, "portal/confirm_delete.html", "menu", {
+        "title": f"Delete “{item.name}”?",
+        "detail": "Customers won't be able to order it any more. Past orders aren't affected.",
+    })
+
+
+@portal_view
+@require_POST
+def item_move(request, pk):
+    item = get_object_or_404(MenuItem, restaurant=request.restaurant, pk=pk)
+    siblings = request.restaurant.items.filter(category=item.category).order_by("position", "id")
+    _move(item, siblings, request.POST.get("direction"))
+    return redirect(f"{reverse('portal:menu')}#item-{item.pk}")
+
+
+@portal_view
+@require_POST
+def item_availability(request, pk):
+    item = get_object_or_404(MenuItem, restaurant=request.restaurant, pk=pk)
+    item.is_available = not item.is_available
+    item.save(update_fields=["is_available"])
+    label = "Available" if item.is_available else "Sold out"
+    if wants_json(request):
+        return JsonResponse({"on": item.is_available, "label": label})
+    messages.success(request, f"“{item.name}”: {label.lower()}.")
+    return redirect(f"{reverse('portal:menu')}#item-{item.pk}")

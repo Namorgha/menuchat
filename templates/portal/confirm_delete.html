@@ -1,0 +1,14 @@
+{% extends "portal/base.html" %}
+{% block title %}Delete{% endblock %}
+{% block content %}
+<div class="panel confirm">
+  <h1>{{ title }}</h1>
+  {% if detail %}<p class="muted">{{ detail }}</p>{% endif %}
+  <p class="muted">This can't be undone.</p>
+  <form method="post" class="form-actions">
+    {% csrf_token %}
+    <button class="btn btn-danger">Delete</button>
+    <a class="btn" href="{% url 'portal:menu' %}">Cancel</a>
+  </form>
+</div>
+{% endblock %}

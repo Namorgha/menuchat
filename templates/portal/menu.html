@@ -1,0 +1,42 @@
+{% extends "portal/base.html" %}
+{% block title %}Menu{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Menu</h1>
+    <p class="muted">Changes reach the assistant on the next message.</p>
+  </div>
+  <a class="btn btn-primary" href="{% url 'portal:item_create' %}">+ Add item</a>
+</div>
+
+<form method="post" action="{% url 'portal:category_create' %}" class="inline-add">
+  {% csrf_token %}
+  <label for="new-category" class="sr-only">New category name</label>
+  <input id="new-category" name="name" maxlength="80" required placeholder="New category, e.g. Desserts">
+  <button class="btn">Add category</button>
+</form>
+
+{% for category in categories %}
+<section class="menu-cat" id="category-{{ category.pk }}">
+  <header class="menu-cat-head">
+    <h2>{{ category.name }} <span class="muted">{{ category.items.all|length }}</span></h2>
+    <div class="menu-actions">
+      {% include "portal/_move.html" with url_name="portal:category_move" pk=category.pk first=forloop.first last=forloop.last label=category.name %}
+      <a class="btn btn-sm" href="{% url 'portal:category_edit' category.pk %}">Rename</a>
+      <a class="btn btn-sm" href="{% url 'portal:category_delete' category.pk %}">Delete</a>
+    </div>
+  </header>
+  {% include "portal/_menu_items.html" with items=category.items.all %}
+  <a class="add-row" href="{% url 'portal:item_create' %}?category={{ category.pk }}">+ Add item to {{ category.name }}</a>
+</section>
+{% empty %}
+<div class="empty-state">No categories yet. Add one above, e.g. “Starters” or “Drinks”.</div>
+{% endfor %}
+
+{% if uncategorized %}
+<section class="menu-cat" id="category-none">
+  <header class="menu-cat-head"><h2>No category <span class="muted">{{ uncategorized|length }}</span></h2></header>
+  {% include "portal/_menu_items.html" with items=uncategorized %}
+</section>
+{% endif %}
+{% endblock %}

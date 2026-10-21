@@ -1,12 +1,17 @@
+import shutil
+import tempfile
 from decimal import Decimal
+from io import BytesIO
 from unittest import mock
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import TestCase, override_settings
+from PIL import Image
 
 from bot import ordering
 from bot.models import Conversation
-from restaurants.models import Customer, MenuItem, Order, Restaurant
+from restaurants.models import Customer, MenuCategory, MenuItem, Order, Restaurant
 
 User = get_user_model()
 
@@ -177,3 +182,143 @@ class OrderHistoryTests(PortalTestCase):
         self.assertEqual(self.numbers(self.client.get("/portal/orders/history/?q=%237")), [7])
         self.assertEqual(self.numbers(self.client.get("/portal/orders/history/?q=youss")), [100])
         self.assertEqual(self.numbers(self.client.get("/portal/orders/history/?q=500")), [])  # restaurant B's order
+
+
+def png(name="photo.png"):
+    buffer = BytesIO()
+    Image.new("RGB", (4, 4), "orange").save(buffer, "PNG")
+    return SimpleUploadedFile(name, buffer.getvalue(), content_type="image/png")
+
+
+class MenuTests(PortalTestCase):
+    def setUp(self):
+        super().setUp()
+        self.mains = MenuCategory.objects.create(restaurant=self.a, name="Mains", position=0)
+        self.drinks = MenuCategory.objects.create(restaurant=self.a, name="Drinks", position=1)
+        self.tagine = MenuItem.objects.create(restaurant=self.a, category=self.mains, name="Tagine", price=Decimal("65"), position=0)
+        self.couscous = MenuItem.objects.create(restaurant=self.a, category=self.mains, name="Couscous", price=Decimal("70"), position=1)
+        self.b_cat = MenuCategory.objects.create(restaurant=self.b, name="B secret category")
+        self.b_item = MenuItem.objects.create(restaurant=self.b, category=self.b_cat, name="B secret dish", price=Decimal("9"))
+        self.client.force_login(self.chef)
+
+    def item_data(self, **overrides):
+        data = {"name": "Harira", "description": "Lentil soup", "price": "15", "category": self.mains.pk, "is_available": "on"}
+        data.update(overrides)
+        return data
+
+    def test_menu_lists_own_categories_and_items_only(self):
+        page = self.client.get("/portal/menu/")
+        self.assertContains(page, "Mains")
+        self.assertContains(page, "Couscous")
+        self.assertNotContains(page, "B secret")
+
+    def test_create_category(self):
+        response = self.client.post("/portal/menu/categories/new/", {"name": "  Desserts "}, follow=True)
+        self.assertContains(response, "Category “Desserts” added.")
+        desserts = self.a.categories.get(name="Desserts")
+        self.assertEqual(desserts.position, 2)
+
+    def test_blank_category_name_shows_an_error(self):
+        response = self.client.post("/portal/menu/categories/new/", {"name": "   "})
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.context["form"].errors["name"])
+        self.assertEqual(self.a.categories.count(), 2)
+
+    def test_rename_and_delete_category_keeps_its_items(self):
+        self.client.post(f"/portal/menu/categories/{self.mains.pk}/edit/", {"name": "Plats"})
+        self.mains.refresh_from_db()
+        self.assertEqual(self.mains.name, "Plats")
+        confirm = self.client.get(f"/portal/menu/categories/{self.mains.pk}/delete/")
+        self.assertContains(confirm, "2 items will stay on the menu")
+        self.client.post(f"/portal/menu/categories/{self.mains.pk}/delete/")
+        self.assertFalse(MenuCategory.objects.filter(pk=self.mains.pk).exists())
+        self.tagine.refresh_from_db()
+        self.assertIsNone(self.tagine.category)
+        self.assertContains(self.client.get("/portal/menu/"), "No category")
+
+    def test_create_item(self):
+        response = self.client.post("/portal/menu/items/new/", self.item_data(), follow=True)
+        self.assertContains(response, "“Harira” added to the menu.")
+        harira = self.a.items.get(name="Harira")
+        self.assertEqual((harira.price, harira.category, harira.position, harira.is_available), (Decimal("15"), self.mains, 2, True))
+
+    def test_new_item_form_preselects_category(self):
+        response = self.client.get(f"/portal/menu/items/new/?category={self.drinks.pk}")
+        self.assertEqual(response.context["form"].initial["category"], self.drinks)
+        self.assertEqual(self.client.get("/portal/menu/items/new/?category=abc").status_code, 200)
+
+    def test_item_validation_errors_are_shown_inline(self):
+        for price in ["0", "-5", ""]:
+            response = self.client.post("/portal/menu/items/new/", self.item_data(price=price))
+            self.assertEqual(response.status_code, 200)
+            self.assertIn("price", response.context["form"].errors)
+        response = self.client.post("/portal/menu/items/new/", self.item_data(name=""))
+        self.assertContains(response, 'class="error"')
+        self.assertFalse(self.a.items.filter(name="Harira").exists())
+
+    def test_cannot_put_an_item_in_another_restaurants_category(self):
+        response = self.client.post("/portal/menu/items/new/", self.item_data(category=self.b_cat.pk))
+        self.assertIn("category", response.context["form"].errors)
+
+    def test_edit_item(self):
+        data = self.item_data(name="Tagine royal", price="80.50", category=self.drinks.pk)
+        del data["is_available"]
+        response = self.client.post(f"/portal/menu/items/{self.tagine.pk}/edit/", data)
+        self.assertRedirects(response, f"/portal/menu/#item-{self.tagine.pk}")
+        self.tagine.refresh_from_db()
+        self.assertEqual(self.tagine.name, "Tagine royal")
+        self.assertEqual(self.tagine.price, Decimal("80.50"))
+        self.assertEqual(self.tagine.category, self.drinks)
+        self.assertFalse(self.tagine.is_available)
+
+    def test_delete_item(self):
+        self.assertContains(self.client.get(f"/portal/menu/items/{self.tagine.pk}/delete/"), "Delete “Tagine”?")
+        self.client.post(f"/portal/menu/items/{self.tagine.pk}/delete/")
+        self.assertFalse(MenuItem.objects.filter(pk=self.tagine.pk).exists())
+
+    def test_reorder_items_and_categories(self):
+        self.client.post(f"/portal/menu/items/{self.couscous.pk}/move/", {"direction": "up"})
+        self.assertEqual(list(self.a.items.filter(category=self.mains).order_by("position").values_list("name", flat=True)), ["Couscous", "Tagine"])
+        self.client.post(f"/portal/menu/items/{self.couscous.pk}/move/", {"direction": "up"})  # already first: no change
+        self.assertEqual(list(self.a.items.filter(category=self.mains).order_by("position").values_list("name", flat=True)), ["Couscous", "Tagine"])
+        self.client.post(f"/portal/menu/categories/{self.drinks.pk}/move/", {"direction": "up"})
+        self.assertEqual(list(self.a.categories.values_list("name", flat=True)), ["Drinks", "Mains"])
+
+    def test_sold_out_toggle_answers_json_for_instant_updates(self):
+        url = f"/portal/menu/items/{self.tagine.pk}/availability/"
+        self.assertEqual(self.client.post(url, HTTP_ACCEPT="application/json").json(), {"on": False, "label": "Sold out"})
+        self.tagine.refresh_from_db()
+        self.assertFalse(self.tagine.is_available)
+        self.assertRedirects(self.client.post(url), f"/portal/menu/#item-{self.tagine.pk}")
+        self.tagine.refresh_from_db()
+        self.assertTrue(self.tagine.is_available)
+
+    def test_image_upload(self):
+        media = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, media, ignore_errors=True)
+        with override_settings(MEDIA_ROOT=media):
+            self.client.post("/portal/menu/items/new/", self.item_data(image=png()))
+            harira = self.a.items.get(name="Harira")
+            self.assertTrue(harira.image.name.startswith("menu/"))
+            self.assertContains(self.client.get("/portal/menu/"), harira.image.url)
+            not_an_image = SimpleUploadedFile("menu.png", b"not an image", content_type="image/png")
+            response = self.client.post("/portal/menu/items/new/", self.item_data(name="Bad", image=not_an_image))
+            self.assertIn("image", response.context["form"].errors)
+
+    def test_staff_cannot_touch_another_restaurants_menu(self):
+        cat, item = self.b_cat.pk, self.b_item.pk
+        requests = [
+            ("get", f"/portal/menu/items/{item}/edit/", {}),
+            ("post", f"/portal/menu/items/{item}/edit/", self.item_data()),
+            ("post", f"/portal/menu/items/{item}/delete/", {}),
+            ("post", f"/portal/menu/items/{item}/move/", {"direction": "up"}),
+            ("post", f"/portal/menu/items/{item}/availability/", {}),
+            ("post", f"/portal/menu/categories/{cat}/edit/", {"name": "Hacked"}),
+            ("post", f"/portal/menu/categories/{cat}/delete/", {}),
+            ("post", f"/portal/menu/categories/{cat}/move/", {"direction": "down"}),
+        ]
+        for method, url, data in requests:
+            self.assertEqual(getattr(self.client, method)(url, data).status_code, 404, url)
+        self.b_item.refresh_from_db()
+        self.b_cat.refresh_from_db()
+        self.assertEqual((self.b_item.name, self.b_item.is_available, self.b_cat.name), ("B secret dish", True, "B secret category"))

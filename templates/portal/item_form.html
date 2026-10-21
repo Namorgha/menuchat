@@ -1,0 +1,28 @@
+{% extends "portal/base.html" %}
+{% block title %}{% if item %}Edit {{ item.name }}{% else %}New item{% endif %}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <a class="back" href="{% url 'portal:menu' %}">← Menu</a>
+    <h1>{% if item %}Edit item{% else %}New item{% endif %}</h1>
+  </div>
+</div>
+
+<form method="post" enctype="multipart/form-data" class="form panel" novalidate>
+  {% csrf_token %}
+  {% if form.non_field_errors %}<div class="form-errors" role="alert">{% for e in form.non_field_errors %}<p>{{ e }}</p>{% endfor %}</div>{% endif %}
+  {% include "portal/_field.html" with field=form.name %}
+  <div class="form-grid cols-2">
+    {% include "portal/_field.html" with field=form.price %}
+    {% include "portal/_field.html" with field=form.category %}
+  </div>
+  {% include "portal/_field.html" with field=form.description %}
+  {% if item.image %}<img class="photo-preview" src="{{ item.image.url }}" alt="Current photo of {{ item.name }}">{% endif %}
+  {% include "portal/_field.html" with field=form.image %}
+  {% include "portal/_field.html" with field=form.is_available %}
+  <div class="form-actions">
+    <button class="btn btn-primary">{% if item %}Save changes{% else %}Add to menu{% endif %}</button>
+    <a class="btn" href="{% url 'portal:menu' %}">Cancel</a>
+  </div>
+</form>
+{% endblock %}

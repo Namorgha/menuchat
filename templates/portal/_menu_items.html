@@ -1,0 +1,28 @@
+{% if items %}
+<ul class="menu-items">
+  {% for item in items %}
+  <li class="menu-item" id="item-{{ item.pk }}">
+    {% if item.image %}<img class="thumb" src="{{ item.image.url }}" alt="" loading="lazy">{% else %}<span class="thumb thumb-empty" aria-hidden="true">🍽</span>{% endif %}
+    <div class="menu-item-info">
+      <div class="menu-item-title"><b>{{ item.name }}</b><span class="price">{{ item.price }} {{ restaurant.currency }}</span></div>
+      {% if item.description %}<p class="muted">{{ item.description }}</p>{% endif %}
+    </div>
+    <div class="menu-actions">
+      <form method="post" action="{% url 'portal:item_availability' item.pk %}" data-switch>
+        {% csrf_token %}
+        <button type="submit" class="toggle" role="switch" aria-checked="{{ item.is_available|yesno:'true,false' }}" aria-label="{{ item.name }} available">
+          <span class="toggle-track" aria-hidden="true"></span>
+          <span class="toggle-label">{{ item.is_available|yesno:"Available,Sold out" }}</span>
+        </button>
+      </form>
+      <span class="spacer"></span>
+      {% include "portal/_move.html" with url_name="portal:item_move" pk=item.pk first=forloop.first last=forloop.last label=item.name %}
+      <a class="btn btn-sm" href="{% url 'portal:item_edit' item.pk %}">Edit</a>
+      <a class="btn btn-sm" href="{% url 'portal:item_delete' item.pk %}">Delete</a>
+    </div>
+  </li>
+  {% endfor %}
+</ul>
+{% else %}
+<p class="empty">No items in this category yet.</p>
+{% endif %}

@@ -1,0 +1,19 @@
+{% extends "portal/base.html" %}
+{% block title %}{% if category %}Rename category{% else %}New category{% endif %}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <a class="back" href="{% url 'portal:menu' %}">← Menu</a>
+    <h1>{% if category %}Rename category{% else %}New category{% endif %}</h1>
+  </div>
+</div>
+
+<form method="post" action="{% if category %}{% url 'portal:category_edit' category.pk %}{% else %}{% url 'portal:category_create' %}{% endif %}" class="form panel" novalidate>
+  {% csrf_token %}
+  {% include "portal/_field.html" with field=form.name %}
+  <div class="form-actions">
+    <button class="btn btn-primary">Save</button>
+    <a class="btn" href="{% url 'portal:menu' %}">Cancel</a>
+  </div>
+</form>
+{% endblock %}
