@@ -129,6 +129,8 @@ WHATSAPP_API_VERSION = os.getenv("WHATSAPP_API_VERSION", "v21.0")
 WHATSAPP_VERIFY_TOKEN = os.getenv("WHATSAPP_VERIFY_TOKEN", "")
 WHATSAPP_APP_SECRET = os.getenv("WHATSAPP_APP_SECRET", "")  # used to verify webhook signatures
 WHATSAPP_ACCESS_TOKEN = os.getenv("WHATSAPP_ACCESS_TOKEN", "")  # default token if a restaurant has none
+# When the owner replies from the WhatsApp Business app (Coexistence), the bot stays quiet this long.
+OWNER_REPLY_PAUSE_MINUTES = int(os.getenv("OWNER_REPLY_PAUSE_MINUTES", "30"))
 
 # --- Web demo -------------------------------------------------------------
 DEMO_RESTAURANT_SLUG = os.getenv("DEMO_RESTAURANT_SLUG", "dar-tangier")

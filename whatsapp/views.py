@@ -10,6 +10,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
 from bot.engine import conversation_for, handle_message, record_customer_message
+from bot.handover import owner_replied
 from bot.models import ProcessedMessage
 from restaurants.models import Restaurant
 
@@ -59,17 +60,34 @@ def webhook(request):
             names = {c.get("wa_id"): c.get("profile", {}).get("name", "") for c in value.get("contacts", [])}
             for msg in value.get("messages", []):  # status updates (delivered/read) have no "messages"
                 _handle_inbound(restaurant, msg, names)
+            # Coexistence: messages the owner sent from the WhatsApp Business app (field "smb_message_echoes").
+            for echo in value.get("message_echoes", []):
+                _handle_echo(restaurant, echo)
 
     # Always 200 quickly so Meta doesn't retry.
     return HttpResponse("ok")
 
 
-def _handle_inbound(restaurant, msg: dict, names: dict) -> None:
+def _first_delivery(msg: dict) -> bool:
     try:
         with transaction.atomic():  # savepoint, so a duplicate doesn't break the surrounding transaction
             ProcessedMessage.objects.create(message_id=msg["id"])
     except (IntegrityError, KeyError):
-        return  # duplicate delivery or malformed message
+        return False  # duplicate delivery or malformed message
+    return True
+
+
+def _handle_echo(restaurant, echo: dict) -> None:
+    if not _first_delivery(echo) or not echo.get("to"):
+        return
+    kind = echo.get("type", "unknown")
+    text = echo.get("text", {}).get("body", "") if kind == "text" else f"[{kind} message]"
+    owner_replied(conversation_for(restaurant, echo["to"]), text)
+
+
+def _handle_inbound(restaurant, msg: dict, names: dict) -> None:
+    if not _first_delivery(msg):
+        return
 
     wa_id = msg.get("from", "")
     if msg.get("type") == "text":

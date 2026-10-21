@@ -2,12 +2,14 @@ import hashlib
 import hmac
 import json
 from decimal import Decimal
+from datetime import timedelta
 from io import StringIO
 from unittest import mock
 
 from django.contrib.auth import get_user_model
 from django.core.management import CommandError, call_command
 from django.test import TestCase, override_settings
+from django.utils import timezone
 
 from restaurants.models import Customer, MenuItem, Order, Restaurant
 
@@ -305,6 +307,36 @@ class WebhookTests(TestCase):
         handle.assert_called_once()
         send.assert_not_called()
         self.assertEqual(list(convo.messages.values_list("text", flat=True)), ["is my order late?", "[image message]"])
+
+    def echo(self, msg_id="wamid.e1", text="Yes, it's on its way!", to="212644444444"):
+        return {"object": "whatsapp_business_account", "entry": [{"changes": [{"field": "smb_message_echoes", "value": {
+            "messaging_product": "whatsapp",
+            "metadata": {"phone_number_id": "PNID1"},
+            "message_echoes": [{"from": "212500000000", "to": to, "id": msg_id, "timestamp": "1760000000",
+                                "type": "text", "text": {"body": text}}],
+        }}]}]}
+
+    def test_owner_reply_from_whatsapp_app_is_saved_and_pauses_the_bot_for_30_minutes(self):
+        self.assertEqual(self.post(self.echo()).status_code, 200)
+        self.post(self.echo())  # Meta retry: ignored
+        convo = Conversation.objects.get(customer__external_id="212644444444")
+        self.assertEqual(list(convo.messages.values_list("sender", "text")), [("owner", "Yes, it's on its way!")])
+        self.assertEqual(convo.history[-1]["role"], "assistant")  # the bot sees it as context later
+        self.assertTrue(convo.bot_paused)
+        self.assertAlmostEqual(convo.bot_paused_until, timezone.now() + timedelta(minutes=30), delta=timedelta(seconds=5))
+        with mock.patch("whatsapp.views.handle_message", wraps=handle_message) as handle, \
+             mock.patch("whatsapp.views.send_text") as send:
+            self.post(self.payload("wamid.after", "thanks!"))
+        handle.assert_called_once()
+        send.assert_not_called()  # the owner is talking; the bot stays quiet
+
+    def test_bot_resumes_after_the_pause(self):
+        self.post(self.echo())
+        Conversation.objects.update(bot_paused_until=timezone.now() - timedelta(seconds=1))
+        with mock.patch("whatsapp.views.handle_message", return_value="Salam!"), \
+             mock.patch("whatsapp.views.send_text") as send:
+            self.post(self.payload("wamid.later", "salam"))
+        send.assert_called_once()
 
     def test_non_text_messages_get_a_polite_reply(self):
         data = self.payload()

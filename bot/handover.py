@@ -1,5 +1,9 @@
 """People answering instead of the bot: staff from the portal inbox, or the owner from the WhatsApp Business app."""
 import logging
+from datetime import timedelta
+
+from django.conf import settings
+from django.utils import timezone
 
 from .models import Conversation, Message
 
@@ -45,3 +49,10 @@ def send_staff_reply(convo: Conversation, text: str) -> Message:
     if not sent:
         raise HandoverError("WhatsApp didn't accept the message. It's saved here; try again in a moment.")
     return message
+
+
+def owner_replied(convo: Conversation, text: str) -> None:
+    """The owner answered from the WhatsApp Business app (Coexistence echo): log it and let them talk for a while."""
+    convo.add_message("assistant", text, sender=Message.Sender.OWNER)
+    convo.bot_paused_until = timezone.now() + timedelta(minutes=settings.OWNER_REPLY_PAUSE_MINUTES)
+    convo.save(update_fields=["history", "bot_paused_until", "updated_at"])
