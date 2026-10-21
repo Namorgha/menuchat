@@ -8,7 +8,7 @@ from django.contrib.auth import views as auth_views
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
 from django.db import transaction
-from django.db.models import Max, Prefetch, Q
+from django.db.models import Count, Max, Prefetch, Q, Sum
 from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -173,10 +173,19 @@ def _start_of_today():
     return timezone.localtime().replace(hour=0, minute=0, second=0, microsecond=0)
 
 
+def takings_today(restaurant) -> dict:
+    """Today's takings: the total of today's orders that weren't cancelled."""
+    today = Order.objects.filter(restaurant=restaurant, created_at__gte=_start_of_today()).exclude(
+        status=Order.Status.CANCELLED
+    )
+    summary = today.aggregate(total=Sum("total"), count=Count("id"))
+    return {"amount": f"{summary['total'] or 0:,.2f} {restaurant.currency}", "count": summary["count"]}
+
+
 @portal_view
 @require_GET
 def orders(request):
-    return page(request, "portal/orders_live.html", "orders", {"tab": "live"})
+    return page(request, "portal/orders_live.html", "orders", {"tab": "live", "takings": takings_today(request.restaurant)})
 
 
 @portal_view
@@ -219,7 +228,7 @@ def orders_data(request):
         {"title": title, "orders": [serialize(o) for o in orders if o.status in statuses]}
         for title, statuses in BOARD_COLUMNS
     ]
-    return JsonResponse({"columns": columns, "is_open": restaurant.is_open})
+    return JsonResponse({"columns": columns, "is_open": restaurant.is_open, "takings": takings_today(restaurant)})
 
 
 @portal_view

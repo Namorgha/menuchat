@@ -104,6 +104,19 @@ class OrdersTests(PortalTestCase):
         self.assertEqual([o["number"] for o in data["columns"][0]["orders"]], [self.order.number])
         self.assertEqual(data["columns"][0]["orders"][0]["payment"], "Cash at pickup")
 
+    def test_board_shows_todays_takings_without_cancelled_or_older_orders(self):
+        self.client.force_login(self.chef)
+        make_order(self.a, 2001, status=Order.Status.COMPLETED)  # 50 MAD each
+        make_order(self.a, 2002, status=Order.Status.CANCELLED)
+        old = make_order(self.a, 2003, status=Order.Status.COMPLETED)
+        Order.objects.filter(pk=old.pk).update(created_at=timezone.now() - timedelta(days=2))
+        make_order(self.b, 2004, status=Order.Status.COMPLETED)  # another restaurant
+        page = self.client.get("/portal/orders/")
+        self.assertEqual(page.context["takings"], {"amount": "115.00 MAD", "count": 2})  # 65 tagine + 50
+        self.assertContains(page, "115.00 MAD")
+        data = self.client.get("/portal/orders/data/").json()
+        self.assertEqual(data["takings"], {"amount": "115.00 MAD", "count": 2})
+
     def test_staff_moves_order_and_customer_is_notified(self):
         self.client.force_login(self.chef)
         with mock.patch("whatsapp.client.send_text", return_value=True) as send:
